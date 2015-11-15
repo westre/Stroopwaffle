@@ -54,6 +54,7 @@
     <Compile Include="Main.cs" />
     <Compile Include="NetworkPlayer.cs" />
     <Compile Include="NetworkClient.cs" />
+    <Compile Include="StatisticsUI.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Stroopwaffle-Shared\Stroopwaffle-Shared.csproj">

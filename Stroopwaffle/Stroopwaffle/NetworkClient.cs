@@ -14,7 +14,6 @@ namespace Stroopwaffle {
         private Main Main { get; set; }
         public NetClient NetClient { get; set; }
         private char KeyValueDelimiter { get; } = '@';
-        //public NetworkPlayer GamePlayer { get; set; }
         public int PlayerID { get; set; } = -1;
         private bool LocalPlayer { get; set; }
         private List<NetworkPlayer> ServerPlayers { get; set; }

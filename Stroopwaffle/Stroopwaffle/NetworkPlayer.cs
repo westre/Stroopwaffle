@@ -13,11 +13,11 @@ namespace Stroopwaffle {
         public string Name { get; set; }
         public int PlayerID { get; set; }
         public Ped Ped { get; set; }
-        public Vector3 Position { get; set; }
+        public Vector3 Position { get; set; } = new Vector3();
         public bool LocalPlayer { get; set; }
-        public Vector3 Rotation { get; set; }
+        public Vector3 Rotation { get; set; } = new Vector3();
         public int Aiming { get; set; }
-        public Vector3 AimPosition { get; set; }
+        public Vector3 AimPosition { get; set; } = new Vector3();
         public int Shooting { get; set; }
 
         public NetworkPlayer() {

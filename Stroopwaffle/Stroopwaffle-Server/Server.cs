@@ -1,4 +1,5 @@
 ﻿using Lidgren.Network;
+using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -31,7 +32,7 @@ namespace Stroopwaffle_Server {
         }
 
         private void BroadcastPlayerData(object sender, EventArgs e) {
-            BroadcastUpdatePlayerList();
+            SendPlayerListPacket();
         }
 
         public void Application_Idle(object sender, EventArgs e) {
@@ -56,13 +57,14 @@ namespace Stroopwaffle_Server {
                                 Form.Output("Remote hail: " + netIncomingMessage.SenderConnection.RemoteHailMessage.ReadString());
 
                                 NetworkPlayer networkPlayer = new NetworkPlayer(netIncomingMessage.SenderConnection);
-
                                 Players.Add(networkPlayer);
+
                                 Form.Output("Added NetworkPlayer to list, size: " + Players.Count);
                             }
                             else if(status == NetConnectionStatus.Disconnected) {
                                 NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
-                                if(networkPlayer != null) {
+
+                                if (networkPlayer != null) {
                                     Players.Remove(networkPlayer);
                                     Form.Output("Removed NetworkPlayer from list, size: " + Players.Count);
                                 }
@@ -73,134 +75,120 @@ namespace Stroopwaffle_Server {
                                 // Update all players with the new information
                                 FreePlayerID(networkPlayer.PlayerID);
                               
-                                BroadcastUpdatePlayerList();
+                                // Unneeded, check loop
+                                SendPlayerListPacket();
                             }
                             break;
                         case NetIncomingMessageType.Data:
-                            string message = netIncomingMessage.ReadString();
+                            PacketType receivedPacket = (PacketType)netIncomingMessage.ReadByte();
 
-                            // Received request from client to send the client the message of the day
-                            if (message.Contains("client_to_server::request_motd")) {
-                                NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
+                            switch (receivedPacket) {                                
+                                case PacketType.Initialization:
+                                    NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
+                                    
+                                    // Allocate Player ID for the newly connected player
+                                    int newPlayerId = FindAvailablePlayerID();
+                                    if (newPlayerId != -1) {
+                                        if (AllocatePlayerID(newPlayerId)) {
+                                            // PlayerID for newly created player
+                                            networkPlayer.PlayerID = newPlayerId;                                        
 
-                                SendToPlayer(networkPlayer.NetConnection, "server_to_client::send_message", "Welcome to my server!");
-                            }
+                                            // Initial position data for the newly connected player
+                                            networkPlayer.Position = new Vector3(157f, -1649f, 30f);
+                                            networkPlayer.Rotation = new Vector3(0f, 0f, 0f);
+                                            networkPlayer.AimLocation = new Vector3(0f, 0f, 0f);
 
-                            if (message.Contains("client_to_server::send_my_position")) {
-                                NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
+                                            // Safe for network interaction
+                                            networkPlayer.SafeForNet = true;
 
-                                string[] messageData = message.Split(KeyValueDelimiter); // [0]server_to_client::send_message@[1]1,2,2,3
-                                string[] playerData = messageData[1].Split('^');
+                                            // Send the packet to the player
+                                            SendInitializationPacket(networkPlayer.NetConnection, networkPlayer.PlayerID, networkPlayer.Position, networkPlayer.SafeForNet);
+                                            FlushSendQueue();
 
-                                int playerId = int.Parse(playerData[0]);
-                                float x = float.Parse(playerData[1]);
-                                float y = float.Parse(playerData[2]);
-                                float z = float.Parse(playerData[3]);
-
-                                if(networkPlayer.PlayerID == playerId) {
-                                    networkPlayer.Position = new Vector3(x, y, z);
-                                    //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
-                                }
-                                else {
-                                    Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
-                                }
-                            }
-
-                            if (message.Contains("client_to_server::send_my_rotation")) {
-                                NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
-
-                                string[] messageData = message.Split(KeyValueDelimiter); // [0]server_to_client::send_message@[1]1,2,2,3
-                                string[] playerData = messageData[1].Split('^');
-
-                                int playerId = int.Parse(playerData[0]);
-                                float x = float.Parse(playerData[1]);
-                                float y = float.Parse(playerData[2]);
-                                float z = float.Parse(playerData[3]);
-
-                                if (networkPlayer.PlayerID == playerId) {
-                                    networkPlayer.Rotation = new Vector3(x, y, z);
-                                    //Form.Output("Updated Rotation for ID: " + playerId + " - " + networkPlayer.Rotation.ToString());
-                                }
-                                else {
-                                    Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
-                                }
-                            }
-                            
-                            if (message.Contains("client_to_server::my_aim_state")) {
-                                NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
-
-                                string[] messageData = message.Split(KeyValueDelimiter);
-                                string[] playerData = messageData[1].Split('^');
-
-                                int playerId = int.Parse(playerData[0]);
-                                int aimState = int.Parse(playerData[1]);
-                                float x = float.Parse(playerData[2]);
-                                float y = float.Parse(playerData[3]);
-                                float z = float.Parse(playerData[4]);
-
-                                if (networkPlayer.PlayerID == playerId) {
-                                    networkPlayer.Aiming = aimState;
-                                    networkPlayer.AimLocation = new Vector3(x, y, z);
-                                    //Form.Output("Updated AimState for ID: " + playerId + " - " + networkPlayer.Aiming + "-" + networkPlayer.AimLocation.ToString());
-                                }
-                                else {
-                                    Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
-                                }
-                            }
-
-                            if (message.Contains("client_to_server::my_shoot_state")) {
-                                NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
-
-                                string[] messageData = message.Split(KeyValueDelimiter);
-                                string[] playerData = messageData[1].Split('^');
-
-                                int playerId = int.Parse(playerData[0]);
-                                int shootState = int.Parse(playerData[1]);
-
-                                if (networkPlayer.PlayerID == playerId) {
-                                    networkPlayer.Shooting = shootState;
-
-                                    if(shootState == 1)
-                                        Form.Output("Updated ShootState for ID: " + playerId + " - " + networkPlayer.Shooting);
-                                }
-                                else {
-                                    Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
-                                }
-                            }
-
-                            if (message.Contains("client_to_server::request_player_id")) {
-                                NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
-
-                                // Allocate Player ID for the newly connected player
-                                int newPlayerId = FindAvailablePlayerID();
-                                if(newPlayerId != -1) {
-                                    if(AllocatePlayerID(newPlayerId)) {
-                                        networkPlayer.PlayerID = newPlayerId;
-                                        Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);
-
-                                        SendToPlayer(networkPlayer.NetConnection, "server_to_client::send_player_id", networkPlayer.PlayerID.ToString());
+                                            Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);
+                                        }
+                                        else {
+                                            Form.Output("Could not allocate player id");
+                                        }
                                     }
                                     else {
-                                        Form.Output("Could not allocate player id");
+                                        Form.Output("Could not find an available player id");
                                     }
-                                }
-                                else {
-                                    Form.Output("Could not find an available player id");
-                                }
+                                    break;
 
-                                // Initial position data for the newly connected player
-                                networkPlayer.Position = new Vector3(157f, -1649f, 30f);
-                                networkPlayer.Rotation = new Vector3(0f, 0f, 0f);
-                                networkPlayer.AimLocation = new Vector3(0f, 0f, 0f);
-                                SendToPlayer(networkPlayer.NetConnection, "server_to_client::send_position", "pid= " + networkPlayer.PlayerID + ",x=" + networkPlayer.Position.X + ",y=" + networkPlayer.Position.Y + ",z=" + networkPlayer.Position.Z);
+                                case PacketType.Position:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
 
-                                // Safe for network interaction
-                                networkPlayer.SafeForNet = true;
-                                // Tell the server he is safe for net transmissions
-                                SendToPlayer(networkPlayer.NetConnection, "server_to_client::safe_for_net", networkPlayer.PlayerID + ",1");                               
+                                    int playerId = netIncomingMessage.ReadInt32();
+                                    float x = netIncomingMessage.ReadFloat();
+                                    float y = netIncomingMessage.ReadFloat();
+                                    float z = netIncomingMessage.ReadFloat();
 
-                                // Let's assume the new player has been initialized, update all connected players about all the players
-                                BroadcastUpdatePlayerList();
+                                    if (networkPlayer.PlayerID == playerId) {
+                                        networkPlayer.Position = new Vector3(x, y, z);
+                                        //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
+                                case PacketType.Rotation:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    x = netIncomingMessage.ReadFloat();
+                                    y = netIncomingMessage.ReadFloat();
+                                    z = netIncomingMessage.ReadFloat();
+
+                                    if (networkPlayer.PlayerID == playerId) {
+                                        networkPlayer.Rotation = new Vector3(x, y, z);
+                                        //Form.Output("Updated Rotation for ID: " + playerId + " - " + networkPlayer.Rotation.ToString());
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
+                                case PacketType.Aiming:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    int aimState = netIncomingMessage.ReadInt32();
+                                    x = netIncomingMessage.ReadFloat();
+                                    y = netIncomingMessage.ReadFloat();
+                                    z = netIncomingMessage.ReadFloat();
+
+                                    if (networkPlayer.PlayerID == playerId) {
+                                        networkPlayer.Aiming = aimState;
+                                        networkPlayer.AimLocation = new Vector3(x, y, z);
+                                        //Form.Output("Updated AimState for ID: " + playerId + " - " + networkPlayer.Aiming + "-" + networkPlayer.AimLocation.ToString());
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
+                                case PacketType.Shooting:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    int shootState = netIncomingMessage.ReadInt32();
+
+                                    if (networkPlayer.PlayerID == playerId) {
+                                        networkPlayer.Shooting = shootState;
+
+                                        if (shootState == 1)
+                                            Form.Output("Updated ShootState for ID: " + playerId + " - " + networkPlayer.Shooting);
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
+                                default:
+                                    Form.Output("Invalid Packet");
+                                    break;
                             }
                             break;
                         default:
@@ -213,56 +201,38 @@ namespace Stroopwaffle_Server {
             }
         }
 
-        // send to all players
-        private void Broadcast(string header, string message) {
+        private void SendInitializationPacket(NetConnection netConnection, int playerID, Vector3 position, bool safeForNet) {
             NetOutgoingMessage outgoingMessage = CreateMessage();
-            outgoingMessage.Write(header + KeyValueDelimiter + message);
-            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+            outgoingMessage.Write((byte)PacketType.Initialization);
+            outgoingMessage.Write(playerID);
+            outgoingMessage.Write(position.X);
+            outgoingMessage.Write(position.Y);
+            outgoingMessage.Write(position.Z);
+            outgoingMessage.Write(safeForNet);
+            SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.ReliableOrdered);
         }
 
-        private void BroadcastUnreliable(string header, string message) {
-            NetOutgoingMessage outgoingMessage = CreateMessage();
-            outgoingMessage.Write(header + KeyValueDelimiter + message);
-            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
-        }
-
-        // send to one player
-        private void SendToPlayer(NetConnection player, string header, string message) {
-            NetOutgoingMessage outgoingMessage = CreateMessage();
-            outgoingMessage.Write(header + KeyValueDelimiter + message);
-            SendMessage(outgoingMessage, player, NetDeliveryMethod.ReliableOrdered, 0);
-
-            Form.Output("SendToPlayer: " + header + KeyValueDelimiter + message);
-        }
-
-        private void BroadcastUpdatePlayerList() {
+        private void SendPlayerListPacket() {
             if (Players.Count > 0) {
-                StringBuilder stringBuilder = new StringBuilder();
-
                 foreach (NetworkPlayer netPlayer in Players) {
                     if(netPlayer.SafeForNet) {
-                        stringBuilder.Append(
-                            netPlayer.PlayerID + "^" 
-                            + netPlayer.Position.X + "^" 
-                            + netPlayer.Position.Y + "^"
-                            + netPlayer.Position.Z + "^" 
-                            + netPlayer.Rotation.X + "^" 
-                            + netPlayer.Rotation.Y + "^" 
-                            + netPlayer.Rotation.Z + "^" 
-                            + netPlayer.Aiming + "^"
-                            + netPlayer.AimLocation.X + "^"
-                            + netPlayer.AimLocation.Y + "^"
-                            + netPlayer.AimLocation.Z + "^"
-                            + netPlayer.Shooting + ":"
-                        );
+                        NetOutgoingMessage outgoingMessage = CreateMessage();
+                        outgoingMessage.Write((byte)PacketType.TotalPlayerData);
+                        outgoingMessage.Write(netPlayer.PlayerID);
+                        outgoingMessage.Write(netPlayer.Position.X);
+                        outgoingMessage.Write(netPlayer.Position.Y);
+                        outgoingMessage.Write(netPlayer.Position.Z);
+                        outgoingMessage.Write(netPlayer.Rotation.X);
+                        outgoingMessage.Write(netPlayer.Rotation.Y);
+                        outgoingMessage.Write(netPlayer.Rotation.Z);
+                        outgoingMessage.Write(netPlayer.Aiming);
+                        outgoingMessage.Write(netPlayer.AimLocation.X);
+                        outgoingMessage.Write(netPlayer.AimLocation.Y);
+                        outgoingMessage.Write(netPlayer.AimLocation.Z);
+                        outgoingMessage.Write(netPlayer.Shooting);
+                        SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                     }
-                }
-
-                if(stringBuilder.Length > 0) {
-                    stringBuilder.Length--;
-
-                    Broadcast("server_to_client::update_player_list", stringBuilder.ToString());
-                }     
+                }   
             }            
         }
 

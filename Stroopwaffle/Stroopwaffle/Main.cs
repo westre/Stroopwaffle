@@ -35,76 +35,20 @@ public class Main : Script {
     }
 
     private void OnNetworkTick(object sender, EventArgs e) {
-        // SafeForNet = has been initialized (position + playerId)
-        if (NetworkClient.SafeForNet) {
-            // Send every tick our player AIM data
-            if (Game.Player.IsAiming) {
-                Vector3 camPosition = Function.Call<Vector3>(Hash.GET_GAMEPLAY_CAM_COORD);
-                Vector3 rot = Function.Call<Vector3>(Hash.GET_GAMEPLAY_CAM_ROT, 0);
-                Vector3 dir = RotationToDirection(rot);
-                Vector3 posLookAt = camPosition + dir * 10f;
-
-                NetworkClient.SendToServerUnreliable("client_to_server::my_aim_state", NetworkClient.PlayerID + "^" + "1" + "^" + posLookAt.X + "^" + posLookAt.Y + "^" + posLookAt.Z);
-            }
-            else {
-                NetworkClient.SendToServerUnreliable("client_to_server::my_aim_state", NetworkClient.PlayerID + "^" + "0^0^0^0");
-            }
-
-            // Send every tick our player SHOOT data
-            if (Game.Player.Character.IsShooting) {
-                NetworkClient.SendToServerUnreliable("client_to_server::my_shoot_state", NetworkClient.PlayerID + "^" + "1");
-            }
-            else if (!Game.Player.Character.IsShooting) {
-                NetworkClient.SendToServerUnreliable("client_to_server::my_shoot_state", NetworkClient.PlayerID + "^" + "0");
-            }
-
-            NetworkClient.SendToServerUnreliable("client_to_server::send_my_position", NetworkClient.PlayerID + "^" + (Game.Player.Character.Position.X + 3.0f) + "^" + Game.Player.Character.Position.Y + "^" + World.GetGroundHeight(Game.Player.Character.Position));
-            NetworkClient.SendToServerUnreliable("client_to_server::send_my_rotation", NetworkClient.PlayerID + "^" + Game.Player.Character.Rotation.X + "^" + Game.Player.Character.Rotation.Y + "^" + Game.Player.Character.Rotation.Z);
-        }
-
         // We have a connection to our server!
         if (NetworkClient.NetClient.ServerConnection != null) {
-            NetIncomingMessage netIncomingMessage;
+            NetworkClient.ReadPackets();
 
-            while ((netIncomingMessage = NetworkClient.NetClient.ServerConnection.Peer.ReadMessage()) != null) {
-                switch (netIncomingMessage.MessageType) {
-                    case NetIncomingMessageType.DebugMessage:
-                    case NetIncomingMessageType.ErrorMessage:
-                    case NetIncomingMessageType.WarningMessage:
-                    case NetIncomingMessageType.VerboseDebugMessage:
-                        string text = netIncomingMessage.ReadString();
-                        break;
-                    case NetIncomingMessageType.StatusChanged:
-                        NetConnectionStatus status = (NetConnectionStatus)netIncomingMessage.ReadByte();
-
-                        if (status == NetConnectionStatus.Connected) {
-                            NetworkClient.SendToServer("client_to_server::request_motd");
-                            NetworkClient.SendToServer("client_to_server::request_player_id");
-                        }
-
-                        string reason = netIncomingMessage.ReadString();
-                        ChatBox.Add("StatusChanged: " + status.ToString() + ": " + reason);
-
-                        break;
-                    case NetIncomingMessageType.Data:
-                        string message = netIncomingMessage.ReadString();
-                        NetworkClient.HandleServerMessage(message);
-                        break;
-                    default:
-                        ChatBox.Add("Unhandled type: " + netIncomingMessage.MessageType + " " + netIncomingMessage.LengthBytes + " bytes");
-                        break;
-                }
-                NetworkClient.NetClient.Recycle(netIncomingMessage);
+            if (NetworkClient.SafeForNet) {
+                NetworkClient.WritePackets();
             }
-        }
+        }   
     }
 
     private void OnTick(object sender, EventArgs e) {
         // DEBUG
         Game.Player.IgnoredByEveryone = true;
-        Game.Player.IgnoredByPolice = true;
-
-        
+        Game.Player.IgnoredByPolice = true;      
 
         // GUI
         ChatBox.Draw();

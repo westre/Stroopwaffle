@@ -3,6 +3,7 @@ using NLua;
 using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -11,64 +12,133 @@ namespace Stroopwaffle_Server {
     public class Server : NetServer {
         public ServerForm Form { get; set; }
         public List<NetworkPlayer> Players { get; set; }
-
-        private char KeyValueDelimiter { get; } = '@';
         private bool[] PlayerIDs { get; set; }
+
+        public struct ConfigurationData {
+            public string ServerName;
+            public int Port;
+            public string Script;
+            public int MaxPlayers;
+        }
+        public ConfigurationData ConfigData;
+
+        private void LoadConfigurationFile(out ConfigurationData configData) {
+            if (!File.Exists(AppDomain.CurrentDomain.BaseDirectory + @"\config.ini")) {
+                Form.Output("Configuration file not found, creating a new one...");
+                FileStream file = File.Create(AppDomain.CurrentDomain.BaseDirectory + @"\config.ini");
+                if (file != null) {
+                    Form.Output("Configuration file successfully created, adding initialization data...");
+
+                    file.Close();
+
+                    StreamWriter streamWriter = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + @"\config.ini");
+
+                    string data = "Server Name = Basic server\nPort = 9999\nScript = basic-script.lua\nMaximum Players = 100";
+                    streamWriter.WriteLine(data);
+                    streamWriter.Close();
+                    Form.Output("Initialization data successfully written.");
+                }
+                else {
+                    Form.Output("Could not create configuration file.");
+                }
+            }
+
+            // https://www.symbiosis-software.com/bibliotek/An-INI-File-Parser-in-C%23
+            string[] syntax = {
+                @"Server Name = ^..*$",
+                @"Port = ^..*$",
+                @"Script = ^..*$",
+                @"Maximum Players = ^..*$",
+            };
+
+            string[] lines = File.ReadAllLines(AppDomain.CurrentDomain.BaseDirectory + @"\config.ini");
+            Dictionary<string, string> config = Parser.Parse(lines, false, syntax);
+
+            configData.ServerName = config["Server Name"];
+            configData.Port = int.Parse(config["Port"]);
+            configData.Script = config["Script"];
+            configData.MaxPlayers = int.Parse(config["Maximum Players"]);
+        }
 
         public Server(ServerForm form, NetPeerConfiguration config) : base(config) {
             Form = form;
+            List<string> errors = new List<string>();
 
-            Start();
+            // Load configuration file
+            try {
+                LoadConfigurationFile(out ConfigData);
 
-            PlayerIDs = new bool[100];
+                if (ConfigData.ServerName.Length > 64)
+                    throw new Exception("Server name may only contain a maximum of 64 characters.");
 
-            Players = new List<NetworkPlayer>();
+                Form.Text = ConfigData.ServerName;
+            }
+            catch(Exception ex) {
+                errors.Add(ex.Message);
+            }
+            
+            if(errors.Count == 0) {
+                // Allocate 100 potential player ids
+                PlayerIDs = new bool[100];
+                // Create list for holding our players
+                Players = new List<NetworkPlayer>();
 
-            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
-            timer.Interval = 10;
-            timer.Tick += BroadcastPlayerData;
-            timer.Start();
+                // Start the network connection
+                Start();
 
-            form.Output("Initialized server");
+                System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
+                timer.Interval = 10;
+                timer.Tick += BroadcastPlayerData;
+                timer.Start();
 
-            // LUA test
-            API api = new API(this);
+                form.Output("Initialized server");
 
-            api.Lua.DoString(@"
-            local value = 23
+                // LUA test
+                API api = new API(this);
 
-            function testFunction(value)
-                broadcastMessage('Yes, the value is : ' .. value)
-            end
+                api.Lua.DoString(@"
+                local value = 23
 
-            testFunction(value)
+                function testFunction(value)
+                    broadcastMessage('Yes, the value is : ' .. value)
+                end
 
-            function OnScriptInitialize()
-                broadcastMessage('Script has been initialized!')
-            end
+                testFunction(value)
 
-            function OnScriptExit()
-                broadcastMessage('Script has been exited.')
-            end
+                function OnScriptInitialize()
+                    broadcastMessage('Script has been initialized!')
+                end
 
-            function OnPlayerConnect(playerId)
-                broadcastMessage('Player ' .. playerId .. ' has joined the server.')
-            end
+                function OnScriptExit()
+                    broadcastMessage('Script has been exited.')
+                end
 
-            function OnPlayerDisconnect(playerId)
-                broadcastMessage('Player ' .. playerId .. ' has left the server.')
-            end
+                function OnPlayerConnect(playerId)
+                    broadcastMessage('Player ' .. playerId .. ' has joined the server.')
+                end
 
-            function OnPlayerChat(playerId, message)
-                broadcastMessage(playerId .. ': ' .. message)
-            end
-            ");
+                function OnPlayerDisconnect(playerId)
+                    broadcastMessage('Player ' .. playerId .. ' has left the server.')
+                end
 
-            api.Fire(API.Callback.OnScriptInitialize);
-            api.Fire(API.Callback.OnPlayerConnect, 2);
-            api.Fire(API.Callback.OnPlayerDisconnect, 2);
-            api.Fire(API.Callback.OnPlayerChat, 2, "Hello!");
-            api.Fire(API.Callback.OnScriptExit);
+                function OnPlayerChat(playerId, message)
+                    broadcastMessage(playerId .. ': ' .. message)
+                end
+                ");
+
+                api.Fire(API.Callback.OnScriptInitialize);
+                api.Fire(API.Callback.OnPlayerConnect, 2);
+                api.Fire(API.Callback.OnPlayerDisconnect, 2);
+                api.Fire(API.Callback.OnPlayerChat, 2, "Hello!");
+                api.Fire(API.Callback.OnScriptExit);
+            }
+            else {
+                form.Output("----ERRORS----");
+                foreach(string error in errors) {
+                    form.Output(error);
+                }
+                form.Output("----END OF ERRORS----");
+            }
         }
 
         private void BroadcastPlayerData(object sender, EventArgs e) {

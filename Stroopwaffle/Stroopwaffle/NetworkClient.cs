@@ -144,6 +144,19 @@ namespace Stroopwaffle {
                         // Debug
                         Game.Player.Character.Weapons.Give(WeaponHash.Pistol, 500, true, true);
                     }
+                    else if (receivedPacket == PacketType.Deinitialization) {
+                        int playerId = netIncomingMessage.ReadInt32();
+
+                        // ConcurrentModificationException failsafe
+                        List<NetworkPlayer> safeServerPlayers = new List<NetworkPlayer>(ServerPlayers);
+
+                        foreach(NetworkPlayer netPlayer in safeServerPlayers) {
+                            if(netPlayer.PlayerID == playerId) {
+                                ServerPlayers.Remove(netPlayer);
+                                Main.ChatBox.Add("(internal) Removed PlayerID: " + playerId);
+                            }
+                        }
+                    }
                     else if (receivedPacket == PacketType.TotalPlayerData) {
                         int playerId = netIncomingMessage.ReadInt32();
                         float posX = netIncomingMessage.ReadFloat();

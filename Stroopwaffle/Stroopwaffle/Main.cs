@@ -15,6 +15,13 @@ using Lidgren.Network;
     dinput8.dll
     ScriptHook.dll
     ScriptHookVDotNet.asi
+
+    Some interesting articles
+    http://etodd.io/2011/12/10/c-for-scripting-runtime-compilation/
+    https://github.com/NLua/NLua
+    http://stackoverflow.com/questions/24927776/nlua-luainterface-calling-a-function
+    http://stackoverflow.com/questions/137933/what-is-the-best-scripting-language-to-embed-in-a-c-sharp-desktop-application
+    http://stackoverflow.com/questions/1650648/catching-ctrl-c-in-a-textbox
 */
 
 public class Main : Script {

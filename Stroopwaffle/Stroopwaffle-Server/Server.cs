@@ -1,4 +1,5 @@
 ﻿using Lidgren.Network;
+using NLua;
 using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
@@ -29,6 +30,45 @@ namespace Stroopwaffle_Server {
             timer.Start();
 
             form.Output("Initialized server");
+
+            // LUA test
+            API api = new API(this);
+
+            api.Lua.DoString(@"
+            local value = 23
+
+            function testFunction(value)
+                broadcastMessage('Yes, the value is : ' .. value)
+            end
+
+            testFunction(value)
+
+            function OnScriptInitialize()
+                broadcastMessage('Script has been initialized!')
+            end
+
+            function OnScriptExit()
+                broadcastMessage('Script has been exited.')
+            end
+
+            function OnPlayerConnect(playerId)
+                broadcastMessage('Player ' .. playerId .. ' has joined the server.')
+            end
+
+            function OnPlayerDisconnect(playerId)
+                broadcastMessage('Player ' .. playerId .. ' has left the server.')
+            end
+
+            function OnPlayerChat(playerId, message)
+                broadcastMessage(playerId .. ': ' .. message)
+            end
+            ");
+
+            api.Fire(API.Callback.OnScriptInitialize);
+            api.Fire(API.Callback.OnPlayerConnect, 2);
+            api.Fire(API.Callback.OnPlayerDisconnect, 2);
+            api.Fire(API.Callback.OnPlayerChat, 2, "Hello!");
+            api.Fire(API.Callback.OnScriptExit);
         }
 
         private void BroadcastPlayerData(object sender, EventArgs e) {
@@ -66,6 +106,7 @@ namespace Stroopwaffle_Server {
 
                                 if (networkPlayer != null) {
                                     Players.Remove(networkPlayer);
+                                    SendDeinitializationPacket(networkPlayer.PlayerID);
                                     Form.Output("Removed NetworkPlayer from list, size: " + Players.Count);
                                 }
                                 else {
@@ -74,9 +115,6 @@ namespace Stroopwaffle_Server {
 
                                 // Update all players with the new information
                                 FreePlayerID(networkPlayer.PlayerID);
-                              
-                                // Unneeded, check loop
-                                SendPlayerListPacket();
                             }
                             break;
                         case NetIncomingMessageType.Data:
@@ -199,6 +237,17 @@ namespace Stroopwaffle_Server {
                 }
                 Thread.Sleep(1);
             }
+        }
+
+        public void SendBroadcastMessagePacket(string message) {
+            Form.Output("SBMC: " + message);
+        }
+
+        private void SendDeinitializationPacket(int playerID) {
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.Deinitialization);
+            outgoingMessage.Write(playerID);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
         }
 
         private void SendInitializationPacket(NetConnection netConnection, int playerID, Vector3 position, bool safeForNet) {

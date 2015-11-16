@@ -11,6 +11,7 @@ namespace Stroopwaffle_Shared {
         Rotation,
         Shooting,
         Aiming,
-        TotalPlayerData
+        TotalPlayerData,
+        Deinitialization
     }
 }

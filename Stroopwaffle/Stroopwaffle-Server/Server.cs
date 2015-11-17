@@ -13,6 +13,7 @@ namespace Stroopwaffle_Server {
         public ServerForm Form { get; set; }
         public List<NetworkPlayer> Players { get; set; }
         private bool[] PlayerIDs { get; set; }
+        private API API { get; set; }
 
         public struct ConfigurationData {
             public string ServerName;
@@ -63,26 +64,33 @@ namespace Stroopwaffle_Server {
         public Server(ServerForm form, NetPeerConfiguration config) : base(config) {
             Form = form;
             List<string> errors = new List<string>();
+            API = new API(this);
+
+            // Allocate 100 potential player ids
+            PlayerIDs = new bool[100];
+            // Create list for holding our players
+            Players = new List<NetworkPlayer>();
 
             // Load configuration file
             try {
                 LoadConfigurationFile(out ConfigData);
 
+                Form.Text = ConfigData.ServerName;
+
                 if (ConfigData.ServerName.Length > 64)
                     throw new Exception("Server name may only contain a maximum of 64 characters.");
 
-                Form.Text = ConfigData.ServerName;
+                if (!File.Exists(AppDomain.CurrentDomain.BaseDirectory + @"\scripts\" + ConfigData.Script))
+                    throw new Exception("Script (" + ConfigData.Script + ") not found.");
+
+                API.Load(AppDomain.CurrentDomain.BaseDirectory + @"\scripts\" + ConfigData.Script);
+                API.Fire(API.Callback.OnScriptInitialize);
             }
             catch(Exception ex) {
                 errors.Add(ex.Message);
             }
             
             if(errors.Count == 0) {
-                // Allocate 100 potential player ids
-                PlayerIDs = new bool[100];
-                // Create list for holding our players
-                Players = new List<NetworkPlayer>();
-
                 // Start the network connection
                 Start();
 
@@ -92,45 +100,10 @@ namespace Stroopwaffle_Server {
                 timer.Start();
 
                 form.Output("Initialized server");
+                
+                API.Fire(API.Callback.OnPlayerChat, 2, "Hello!");
+                API.Fire(API.Callback.OnPlayerConnect, 2);
 
-                // LUA test
-                API api = new API(this);
-
-                api.Lua.DoString(@"
-                local value = 23
-
-                function testFunction(value)
-                    broadcastMessage('Yes, the value is : ' .. value)
-                end
-
-                testFunction(value)
-
-                function OnScriptInitialize()
-                    broadcastMessage('Script has been initialized!')
-                end
-
-                function OnScriptExit()
-                    broadcastMessage('Script has been exited.')
-                end
-
-                function OnPlayerConnect(playerId)
-                    broadcastMessage('Player ' .. playerId .. ' has joined the server.')
-                end
-
-                function OnPlayerDisconnect(playerId)
-                    broadcastMessage('Player ' .. playerId .. ' has left the server.')
-                end
-
-                function OnPlayerChat(playerId, message)
-                    broadcastMessage(playerId .. ': ' .. message)
-                end
-                ");
-
-                api.Fire(API.Callback.OnScriptInitialize);
-                api.Fire(API.Callback.OnPlayerConnect, 2);
-                api.Fire(API.Callback.OnPlayerDisconnect, 2);
-                api.Fire(API.Callback.OnPlayerChat, 2, "Hello!");
-                api.Fire(API.Callback.OnScriptExit);
             }
             else {
                 form.Output("----ERRORS----");
@@ -138,6 +111,8 @@ namespace Stroopwaffle_Server {
                     form.Output(error);
                 }
                 form.Output("----END OF ERRORS----");
+
+                API.Fire(API.Callback.OnScriptExit);
             }
         }
 
@@ -177,6 +152,7 @@ namespace Stroopwaffle_Server {
                                 if (networkPlayer != null) {
                                     Players.Remove(networkPlayer);
                                     SendDeinitializationPacket(networkPlayer.PlayerID);
+                                    API.Fire(API.Callback.OnPlayerDisconnect, networkPlayer.PlayerID);
                                     Form.Output("Removed NetworkPlayer from list, size: " + Players.Count);
                                 }
                                 else {
@@ -214,6 +190,7 @@ namespace Stroopwaffle_Server {
                                             FlushSendQueue();
 
                                             Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);
+                                            API.Fire(API.Callback.OnPlayerConnect, newPlayerId);
                                         }
                                         else {
                                             Form.Output("Could not allocate player id");
@@ -310,7 +287,22 @@ namespace Stroopwaffle_Server {
         }
 
         public void SendBroadcastMessagePacket(string message) {
-            Form.Output("SBMC: " + message);
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.ChatMessage);
+            outgoingMessage.Write(message);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+
+            Form.Output("SendBroadcastMessagePacket: " + message);
+        }
+
+        public void SendBroadcastMessagePacket(NetConnection netConnection, string message) {
+            // Just for the sake of redundancy, don't include the playerId so we can keep using PacketType.ChatMessage on the client
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.ChatMessage);
+            outgoingMessage.Write(message);
+            SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.ReliableOrdered);
+
+            Form.Output("SendBroadcastMessagePacket (client): " + message);
         }
 
         private void SendDeinitializationPacket(int playerID) {
@@ -359,6 +351,14 @@ namespace Stroopwaffle_Server {
             foreach (NetworkPlayer player in Players) {
                 if (player.NetConnection == netConnection)
                     return player;
+            }
+            return null;
+        }
+
+        public NetConnection Find(int playerId) {
+            foreach(NetworkPlayer player in Players) {
+                if (player.PlayerID == playerId)
+                    return player.NetConnection;
             }
             return null;
         }

@@ -157,6 +157,11 @@ namespace Stroopwaffle {
                             }
                         }
                     }
+                    else if (receivedPacket == PacketType.ChatMessage) {
+                        string message = netIncomingMessage.ReadString();
+
+                        Main.ChatBox.Add(message);
+                    }
                     else if (receivedPacket == PacketType.TotalPlayerData) {
                         int playerId = netIncomingMessage.ReadInt32();
                         float posX = netIncomingMessage.ReadFloat();

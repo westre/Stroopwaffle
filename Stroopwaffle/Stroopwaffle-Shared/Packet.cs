@@ -12,6 +12,7 @@ namespace Stroopwaffle_Shared {
         Shooting,
         Aiming,
         TotalPlayerData,
-        Deinitialization
+        Deinitialization,
+        ChatMessage
     }
 }

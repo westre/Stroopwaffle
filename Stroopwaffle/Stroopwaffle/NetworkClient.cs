@@ -5,6 +5,7 @@ using Lidgren.Network;
 using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -19,7 +20,6 @@ namespace Stroopwaffle {
         public bool SafeForNet { get; set; }
 
         private int Switch { get; set; }
-
         private int BlockAimAtTimer { get; set; }
         private bool BlockAimAtTask { get; set; }
 
@@ -168,15 +168,6 @@ namespace Stroopwaffle {
                         Main.ChatBox.Add(message);
                     }
                     else if (receivedPacket == PacketType.TotalPlayerData) {
-                        if(BlockAimAtTask) {
-                            BlockAimAtTimer++;
-                            if (BlockAimAtTimer == 50) {
-                                BlockAimAtTimer = 0;
-                                BlockAimAtTask = false;
-                            }                          
-                        }
-                        Switch++;
-
                         int playerId = netIncomingMessage.ReadInt32();
                         float posX = netIncomingMessage.ReadFloat();
                         float posY = netIncomingMessage.ReadFloat();
@@ -207,6 +198,15 @@ namespace Stroopwaffle {
                             networkPlayer.Ped = World.CreatePed(PedHash.FibArchitect, networkPlayer.Position);
                             networkPlayer.Ped.Weapons.Give(WeaponHash.Pistol, 500, true, true);
 
+                            // DEBUG, not sure how this should be sorted out, reminder clone testing!
+                            networkPlayer.Ped.RelationshipGroup = Game.Player.Character.RelationshipGroup;
+                            networkPlayer.Ped.BlockPermanentEvents = true;
+                            networkPlayer.Ped.CanRagdoll = false;
+                            networkPlayer.Ped.IsInvincible = true;
+                            networkPlayer.Ped.AddBlip();
+                            networkPlayer.Ped.CurrentBlip.Color = BlipColor.White;
+                            networkPlayer.Ped.CurrentBlip.Scale = 0.8f;
+
                             if (PlayerID == networkPlayer.PlayerID) {
                                 Main.ChatBox.Add("(internal) - This is also our LocalPlayer");
                                 networkPlayer.LocalPlayer = true;
@@ -217,13 +217,13 @@ namespace Stroopwaffle {
                             Main.ChatBox.Add("(internal) Added PlayerID " + networkPlayer.PlayerID + " to the ServerPlayers list");
                         }
 
+                        Point namePlate = UI.WorldToScreen(networkPlayer.Ped.Position + new Vector3(0, 0, 1.3f));
+                        Main.NametagUI.SetNametagForPlayer(new Nametag { NetworkPlayer = networkPlayer, Point = namePlate });
+
                         networkPlayer.Aiming = aiming;
                         networkPlayer.AimPosition = new Vector3(aimPosX, aimPosY, aimPosZ);
                         
                         networkPlayer.Shooting = shooting;
-
-                        // DEBUG, not sure how this should be sorted out, reminder clone testing!
-                        networkPlayer.Ped.RelationshipGroup = Game.Player.Character.RelationshipGroup;
 
                         // Update the player
                         if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && (Switch % 15 == 0)) {
@@ -249,6 +249,15 @@ namespace Stroopwaffle {
                         }
 
                         networkPlayer.Position = new Vector3(posX, posY, posZ);
+
+                        if (BlockAimAtTask) {
+                            BlockAimAtTimer++;
+                            if (BlockAimAtTimer == 50) {
+                                BlockAimAtTimer = 0;
+                                BlockAimAtTask = false;
+                            }
+                        }
+                        Switch++;
                     }
                 }
                 NetClient.Recycle(netIncomingMessage);
@@ -256,6 +265,10 @@ namespace Stroopwaffle {
         }
 
         public void Disconnect() {
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                serverNetworkPlayer.Ped.CurrentBlip.Remove();
+                serverNetworkPlayer.Ped.Delete();
+            }
             NetClient.Disconnect("bye");
         }
 

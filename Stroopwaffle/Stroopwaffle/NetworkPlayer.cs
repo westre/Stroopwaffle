@@ -8,7 +8,7 @@ using GTA;
 using GTA.Math;
 
 namespace Stroopwaffle {
-    class NetworkPlayer {
+    public class NetworkPlayer {
 
         public string Name { get; set; }
         public int PlayerID { get; set; }

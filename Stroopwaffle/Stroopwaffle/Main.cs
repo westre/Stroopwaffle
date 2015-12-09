@@ -29,11 +29,13 @@ public class Main : Script {
     private NetworkClient NetworkClient { get; set; }
     public Chatbox ChatBox { get; set; }
     public StatisticsUI StatisticsUI { get; set; }
+    public NametagUI NametagUI { get; set; }
 
     public Main() {
         NetworkClient = new NetworkClient(this);
         ChatBox = new Chatbox();
         StatisticsUI = new StatisticsUI();
+        NametagUI = new NametagUI(this);
 
         // Register events
         this.Tick += OnTick;
@@ -62,6 +64,7 @@ public class Main : Script {
         // GUI
         ChatBox.Draw();
         StatisticsUI.Draw();
+        NametagUI.Draw();
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e) {

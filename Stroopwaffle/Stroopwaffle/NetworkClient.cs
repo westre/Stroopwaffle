@@ -18,6 +18,11 @@ namespace Stroopwaffle {
         private List<NetworkPlayer> ServerPlayers { get; set; }
         public bool SafeForNet { get; set; }
 
+        private int Switch { get; set; }
+
+        private int BlockAimAtTimer { get; set; }
+        private bool BlockAimAtTask { get; set; }
+
         public NetworkClient(Main main) {
             Main = main;
 
@@ -163,6 +168,15 @@ namespace Stroopwaffle {
                         Main.ChatBox.Add(message);
                     }
                     else if (receivedPacket == PacketType.TotalPlayerData) {
+                        if(BlockAimAtTask) {
+                            BlockAimAtTimer++;
+                            if (BlockAimAtTimer == 50) {
+                                BlockAimAtTimer = 0;
+                                BlockAimAtTask = false;
+                            }                          
+                        }
+                        Switch++;
+
                         int playerId = netIncomingMessage.ReadInt32();
                         float posX = netIncomingMessage.ReadFloat();
                         float posY = netIncomingMessage.ReadFloat();
@@ -203,35 +217,38 @@ namespace Stroopwaffle {
                             Main.ChatBox.Add("(internal) Added PlayerID " + networkPlayer.PlayerID + " to the ServerPlayers list");
                         }
 
-                        // Update the player
-                        networkPlayer.Position = new Vector3(posX, posY, posZ);
-                        networkPlayer.Ped.Position = networkPlayer.Position;
-
                         networkPlayer.Aiming = aiming;
                         networkPlayer.AimPosition = new Vector3(aimPosX, aimPosY, aimPosZ);
-
+                        
                         networkPlayer.Shooting = shooting;
 
                         // DEBUG, not sure how this should be sorted out, reminder clone testing!
                         networkPlayer.Ped.RelationshipGroup = Game.Player.Character.RelationshipGroup;
 
+                        // Update the player
+                        if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && (Switch % 15 == 0)) {
+                            if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
+                                Function.Call(Hash.TASK_GO_TO_COORD_WHILE_AIMING_AT_COORD, networkPlayer.Ped.Handle, networkPlayer.Position.X, networkPlayer.Position.Y, networkPlayer.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 2f, 0, 0x3F000000, 0x40800000, 1, 512, 0, (uint)FiringPattern.FullAuto);
+                                BlockAimAtTask = true;
+                            }
+                        }
+                        else if(networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && !BlockAimAtTask) {
+                            networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 100);
+                        }
+
                         if (networkPlayer.Shooting == 1) {
                             networkPlayer.Ped.ShootRate = 1000;
                             networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 500);
+                            BlockAimAtTask = true;
+                        }
 
-                            Main.ChatBox.Add("(internal) SHOOT: " + networkPlayer.PlayerID);
-                            //Script.Wait(500); // TODO: do this shit differently
+                        if(networkPlayer.Aiming == 0 && networkPlayer.Shooting == 0) {
+                            if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
+                                networkPlayer.Ped.Task.RunTo(networkPlayer.Position, true, 500);
+                            }  
                         }
-                        else {
-                            if (networkPlayer.Aiming == 1) {
-                                // is the shooting task running?
-                                networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 1000);
-                            }
-                            else {
-                                networkPlayer.Rotation = new Vector3(rotX, rotY, rotZ);
-                                networkPlayer.Ped.Rotation = new Vector3(rotX, rotY, rotZ);
-                            }
-                        }
+
+                        networkPlayer.Position = new Vector3(posX, posY, posZ);
                     }
                 }
                 NetClient.Recycle(netIncomingMessage);

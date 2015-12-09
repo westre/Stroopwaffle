@@ -287,6 +287,8 @@ namespace Stroopwaffle_Server {
         }
 
         public void SendBroadcastMessagePacket(string message) {
+            if (GetAllConnections().Count == 0) return;
+
             NetOutgoingMessage outgoingMessage = CreateMessage();
             outgoingMessage.Write((byte)PacketType.ChatMessage);
             outgoingMessage.Write(message);
@@ -306,6 +308,8 @@ namespace Stroopwaffle_Server {
         }
 
         private void SendDeinitializationPacket(int playerID) {
+            if (GetAllConnections().Count == 0) return;
+
             NetOutgoingMessage outgoingMessage = CreateMessage();
             outgoingMessage.Write((byte)PacketType.Deinitialization);
             outgoingMessage.Write(playerID);

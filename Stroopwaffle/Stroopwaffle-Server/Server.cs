@@ -271,6 +271,52 @@ namespace Stroopwaffle_Server {
                                     }
                                     break;
 
+                                case PacketType.NoVehicle:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+
+                                    networkPlayer.NetVehicle = null;
+                                    break;
+
+                                case PacketType.Vehicle:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    int vehicleHash = netIncomingMessage.ReadInt32();
+                                    float posX = netIncomingMessage.ReadFloat();
+                                    float posY = netIncomingMessage.ReadFloat();
+                                    float posZ = netIncomingMessage.ReadFloat();
+                                    float rotW = netIncomingMessage.ReadFloat();
+                                    float rotX = netIncomingMessage.ReadFloat();
+                                    float rotY = netIncomingMessage.ReadFloat();
+                                    float rotZ = netIncomingMessage.ReadFloat();
+                                    int primaryColor = netIncomingMessage.ReadInt32();
+                                    int secondaryColor = netIncomingMessage.ReadInt32();
+                                    float speed = netIncomingMessage.ReadFloat();
+
+                                    if (networkPlayer.PlayerID == playerId) {
+                                        NetworkVehicle netVehicle = new NetworkVehicle();
+                                        netVehicle.Hash = vehicleHash;
+                                        netVehicle.PosX = posX;
+                                        netVehicle.PosY = posY;
+                                        netVehicle.PosZ = posZ;
+                                        netVehicle.RotW = rotW;
+                                        netVehicle.RotX = rotX;
+                                        netVehicle.RotY = rotY;
+                                        netVehicle.RotZ = rotZ;
+                                        netVehicle.PrimaryColor = primaryColor;
+                                        netVehicle.SecondaryColor = secondaryColor;
+                                        netVehicle.Speed = speed;
+
+                                        networkPlayer.NetVehicle = netVehicle;
+                                        //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
                                 default:
                                     Form.Output("Invalid Packet");
                                     break;
@@ -346,6 +392,31 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.AimLocation.Z);
                         outgoingMessage.Write(netPlayer.Shooting);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
+
+                        if(netPlayer.NetVehicle != null) {
+                            outgoingMessage = CreateMessage();
+                            outgoingMessage.Write((byte)PacketType.Vehicle);
+                            outgoingMessage.Write(netPlayer.PlayerID);
+                            outgoingMessage.Write(netPlayer.NetVehicle.Hash);
+                            outgoingMessage.Write(netPlayer.NetVehicle.PosX);
+                            outgoingMessage.Write(netPlayer.NetVehicle.PosY);
+                            outgoingMessage.Write(netPlayer.NetVehicle.PosZ);
+                            outgoingMessage.Write(netPlayer.NetVehicle.RotW);
+                            outgoingMessage.Write(netPlayer.NetVehicle.RotX);
+                            outgoingMessage.Write(netPlayer.NetVehicle.RotY);
+                            outgoingMessage.Write(netPlayer.NetVehicle.RotZ);
+                            outgoingMessage.Write(netPlayer.NetVehicle.PrimaryColor);
+                            outgoingMessage.Write(netPlayer.NetVehicle.SecondaryColor);
+                            outgoingMessage.Write(netPlayer.NetVehicle.Speed);
+                            Form.Output("Speed: " + netPlayer.NetVehicle.Speed);
+                            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
+                        }
+                        else {
+                            outgoingMessage = CreateMessage();
+                            outgoingMessage.Write((byte)PacketType.NoVehicle);
+                            outgoingMessage.Write(netPlayer.PlayerID);
+                            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
+                        }
                     }
                 }   
             }            

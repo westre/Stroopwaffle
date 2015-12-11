@@ -13,6 +13,8 @@ namespace Stroopwaffle_Shared {
         Aiming,
         TotalPlayerData,
         Deinitialization,
-        ChatMessage
+        ChatMessage,
+        Vehicle,
+        NoVehicle
     }
 }

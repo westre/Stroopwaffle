@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Lidgren.Network;
 using GTA;
 using GTA.Math;
+using Stroopwaffle_Shared;
 
 namespace Stroopwaffle {
     public class NetworkPlayer {
@@ -19,6 +20,8 @@ namespace Stroopwaffle {
         public int Aiming { get; set; }
         public Vector3 AimPosition { get; set; } = new Vector3();
         public int Shooting { get; set; }
+
+        public NetworkVehicle NetVehicle { get; set; }
 
         public NetworkPlayer() {
             

@@ -53,10 +53,42 @@ namespace Stroopwaffle {
                 SendShootingPacket(0);
             }
 
+            if(Game.Player.Character.CurrentVehicle != null) {
+                SendVehiclePacket(Game.Player.Character.CurrentVehicle);
+            }
+            else {
+                SendNoVehiclePacket();
+            }
+                
             SendPositionPacket();
             SendRotationPacket();
 
             NetClient.FlushSendQueue();
+        }
+
+        private void SendNoVehiclePacket() {
+            NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
+            outgoingMessage.Write((byte)PacketType.NoVehicle);
+            outgoingMessage.Write(PlayerID);
+            NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
+        }
+
+        private void SendVehiclePacket(Vehicle vehicle) {
+            NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
+            outgoingMessage.Write((byte)PacketType.Vehicle);
+            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(vehicle.Model.Hash);
+            outgoingMessage.Write(vehicle.Position.X + 10.0f);
+            outgoingMessage.Write(vehicle.Position.Y);
+            outgoingMessage.Write(vehicle.Position.Z);
+            outgoingMessage.Write(vehicle.Quaternion.W);
+            outgoingMessage.Write(vehicle.Quaternion.X);
+            outgoingMessage.Write(vehicle.Quaternion.Y);
+            outgoingMessage.Write(vehicle.Quaternion.Z);
+            outgoingMessage.Write((int)vehicle.PrimaryColor);
+            outgoingMessage.Write((int)vehicle.SecondaryColor);
+            outgoingMessage.Write(vehicle.Speed);
+            NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
         }
 
         private void SendAimingPacket(int aimState) {
@@ -157,6 +189,9 @@ namespace Stroopwaffle {
 
                         foreach(NetworkPlayer netPlayer in safeServerPlayers) {
                             if(netPlayer.PlayerID == playerId) {
+                                netPlayer.Ped.CurrentBlip.Remove();
+                                netPlayer.Ped.Delete();
+
                                 ServerPlayers.Remove(netPlayer);
                                 Main.ChatBox.Add("(internal) Removed PlayerID: " + playerId);
                             }
@@ -166,6 +201,82 @@ namespace Stroopwaffle {
                         string message = netIncomingMessage.ReadString();
 
                         Main.ChatBox.Add(message);
+                    }
+                    else if (receivedPacket == PacketType.Vehicle) {
+                        int playerId = netIncomingMessage.ReadInt32();
+                        int vehicleHash = netIncomingMessage.ReadInt32();
+                        float posX = netIncomingMessage.ReadFloat();
+                        float posY = netIncomingMessage.ReadFloat();
+                        float posZ = netIncomingMessage.ReadFloat();
+                        float rotW = netIncomingMessage.ReadFloat();
+                        float rotX = netIncomingMessage.ReadFloat();
+                        float rotY = netIncomingMessage.ReadFloat();
+                        float rotZ = netIncomingMessage.ReadFloat();
+                        int primaryColor = netIncomingMessage.ReadInt32();
+                        int secondaryColor = netIncomingMessage.ReadInt32();
+                        float speed = netIncomingMessage.ReadFloat();
+
+                        // Check to see if this player is already in our list
+                        NetworkPlayer networkPlayer = null;
+                        foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                            if (serverNetworkPlayer.PlayerID == playerId)
+                                networkPlayer = serverNetworkPlayer;
+                        }
+
+                        if(networkPlayer.NetVehicle != null) {
+                            networkPlayer.NetVehicle.Hash = vehicleHash;
+                            networkPlayer.NetVehicle.PosX = posX;
+                            networkPlayer.NetVehicle.PosY = posY;
+                            networkPlayer.NetVehicle.PosZ = posZ;
+                            networkPlayer.NetVehicle.RotW = rotW;
+                            networkPlayer.NetVehicle.RotX = rotX;
+                            networkPlayer.NetVehicle.RotY = rotY;
+                            networkPlayer.NetVehicle.RotZ = rotZ;
+                            networkPlayer.NetVehicle.PrimaryColor = primaryColor;
+                            networkPlayer.NetVehicle.SecondaryColor = secondaryColor;
+                            networkPlayer.NetVehicle.Speed = speed;
+
+                            NetworkVehicle netVehicle = networkPlayer.NetVehicle;
+
+                            var distance = new Vector3(posX, posY, posZ) - netVehicle.PhysicalVehicle.Position;
+                            distance.Normalize();
+
+                            netVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+
+                            if (speed >= 1 && (Switch % 3 == 0)) {
+                                var direction = distance * Math.Abs(speed - netVehicle.PhysicalVehicle.Speed);
+                                netVehicle.PhysicalVehicle.ApplyForce(direction);
+                            }
+
+                            // Force reset position
+                            /*
+                            if(!netVehicle.PhysicalVehicle.IsInRangeOf(new Vector3(posX, posY, posZ), 1f)) {
+                                netVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ);
+                            }
+                            */
+                        }
+                        else {
+                            Main.ChatBox.Add("No NetVehicle found.. create one: " + networkPlayer.PlayerID);
+
+                            NetworkVehicle netVehicle = new NetworkVehicle();
+                            netVehicle.Hash = vehicleHash;
+                            netVehicle.PosX = posX;
+                            netVehicle.PosY = posY;
+                            netVehicle.PosZ = posZ;
+                            netVehicle.RotW = rotW;
+                            netVehicle.RotX = rotX;
+                            netVehicle.RotY = rotY;
+                            netVehicle.RotZ = rotZ;
+                            netVehicle.PrimaryColor = primaryColor;
+                            netVehicle.SecondaryColor = secondaryColor;
+
+                            netVehicle.PhysicalVehicle = World.CreateVehicle(new Model(netVehicle.Hash), new Vector3(netVehicle.PosX, netVehicle.PosY, netVehicle.PosZ), 0);
+                            netVehicle.PhysicalVehicle.IsInvincible = true;
+                            networkPlayer.NetVehicle = netVehicle;
+
+                            networkPlayer.Ped.Task.WarpIntoVehicle(networkPlayer.NetVehicle.PhysicalVehicle, VehicleSeat.Driver);
+                        }
+                        //Main.ChatBox.Add("PosX: " + posX + ", PosY: " + posY + ", PosZ: " + posZ);
                     }
                     else if (receivedPacket == PacketType.TotalPlayerData) {
                         int playerId = netIncomingMessage.ReadInt32();
@@ -225,29 +336,31 @@ namespace Stroopwaffle {
                         
                         networkPlayer.Shooting = shooting;
 
-                        // Update the player
-                        if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && (Switch % 15 == 0)) {
-                            if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
-                                Function.Call(Hash.TASK_GO_TO_COORD_WHILE_AIMING_AT_COORD, networkPlayer.Ped.Handle, networkPlayer.Position.X, networkPlayer.Position.Y, networkPlayer.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 2f, 0, 0x3F000000, 0x40800000, 1, 512, 0, (uint)FiringPattern.FullAuto);
+                        // Update the player if he's not in a vehicle
+                        if(networkPlayer.NetVehicle == null) {
+                            if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && (Switch % 15 == 0)) {
+                                if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
+                                    Function.Call(Hash.TASK_GO_TO_COORD_WHILE_AIMING_AT_COORD, networkPlayer.Ped.Handle, networkPlayer.Position.X, networkPlayer.Position.Y, networkPlayer.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 2f, 0, 0x3F000000, 0x40800000, 1, 512, 0, (uint)FiringPattern.FullAuto);
+                                    BlockAimAtTask = true;
+                                }
+                            }
+                            else if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && !BlockAimAtTask) {
+                                networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 100);
+                            }
+
+                            if (networkPlayer.Shooting == 1) {
+                                networkPlayer.Ped.ShootRate = 1000;
+                                networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 500);
                                 BlockAimAtTask = true;
                             }
-                        }
-                        else if(networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && !BlockAimAtTask) {
-                            networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 100);
-                        }
 
-                        if (networkPlayer.Shooting == 1) {
-                            networkPlayer.Ped.ShootRate = 1000;
-                            networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 500);
-                            BlockAimAtTask = true;
+                            if (networkPlayer.Aiming == 0 && networkPlayer.Shooting == 0) {
+                                if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
+                                    networkPlayer.Ped.Task.RunTo(networkPlayer.Position, true, 500);
+                                }
+                            }
                         }
-
-                        if(networkPlayer.Aiming == 0 && networkPlayer.Shooting == 0) {
-                            if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
-                                networkPlayer.Ped.Task.RunTo(networkPlayer.Position, true, 500);
-                            }  
-                        }
-
+                        
                         networkPlayer.Position = new Vector3(posX, posY, posZ);
 
                         if (BlockAimAtTask) {

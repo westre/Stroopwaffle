@@ -39,12 +39,19 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NetworkVehicle.cs" />
     <Compile Include="Packet.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="ScriptHookVDotNet">
+      <HintPath>..\..\ScriptHookVDotNet.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>COPY "$(TargetDir)$(TargetFileName)" "D:\Steam\steamapps\common\Grand Theft Auto V\scripts"</PostBuildEvent>
+  </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

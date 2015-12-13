@@ -12,7 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace Stroopwaffle {
-    class NetworkClient {
+    public class NetworkClient {
         private Main Main { get; set; }
         public NetClient NetClient { get; set; }
         public int PlayerID { get; set; } = -1;
@@ -94,7 +94,7 @@ namespace Stroopwaffle {
         private void SendAimingPacket(int aimState) {
             Vector3 camPosition = Function.Call<Vector3>(Hash.GET_GAMEPLAY_CAM_COORD);
             Vector3 rot = Function.Call<Vector3>(Hash.GET_GAMEPLAY_CAM_ROT, 0);
-            Vector3 dir = Main.RotationToDirection(rot);
+            Vector3 dir = Utility.RotationToDirection(rot);
             Vector3 posLookAt = camPosition + dir * 10f;
 
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
@@ -138,6 +138,14 @@ namespace Stroopwaffle {
         private void SendRequestionInitializationPacket() {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Initialization);
+            NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.ReliableOrdered);
+        }
+
+        public void SendStringMessagePacket(string message) {
+            NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
+            outgoingMessage.Write((byte)PacketType.ChatMessage);
+            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(message);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.ReliableOrdered);
         }
 
@@ -201,6 +209,22 @@ namespace Stroopwaffle {
                         string message = netIncomingMessage.ReadString();
 
                         Main.ChatBox.Add(message);
+                    }
+                    else if (receivedPacket == PacketType.NoVehicle) {
+                        int playerId = netIncomingMessage.ReadInt32();
+
+                        NetworkPlayer networkPlayer = null;
+                        foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                            if (serverNetworkPlayer.PlayerID == playerId)
+                                networkPlayer = serverNetworkPlayer;
+                        }
+
+                        if(networkPlayer.NetVehicle != null) {
+                            Main.ChatBox.Add("Received NoVehicle Packet, NetVehicle != null, removing Vehicle from Entities: " + networkPlayer.PlayerID);
+
+                            networkPlayer.Ped.Task.WarpOutOfVehicle(networkPlayer.NetVehicle.PhysicalVehicle);
+                            networkPlayer.NetVehicle = null;
+                        }
                     }
                     else if (receivedPacket == PacketType.Vehicle) {
                         int playerId = netIncomingMessage.ReadInt32();
@@ -272,6 +296,7 @@ namespace Stroopwaffle {
 
                             netVehicle.PhysicalVehicle = World.CreateVehicle(new Model(netVehicle.Hash), new Vector3(netVehicle.PosX, netVehicle.PosY, netVehicle.PosZ), 0);
                             netVehicle.PhysicalVehicle.IsInvincible = true;
+                            netVehicle.PhysicalVehicle.EngineRunning = true;
                             networkPlayer.NetVehicle = netVehicle;
 
                             networkPlayer.Ped.Task.WarpIntoVehicle(networkPlayer.NetVehicle.PhysicalVehicle, VehicleSeat.Driver);

@@ -26,14 +26,14 @@ using Lidgren.Network;
 
 public class Main : Script {
 
-    private NetworkClient NetworkClient { get; set; }
+    public NetworkClient NetworkClient { get; set; }
     public Chatbox ChatBox { get; set; }
     public StatisticsUI StatisticsUI { get; set; }
     public NametagUI NametagUI { get; set; }
 
     public Main() {
         NetworkClient = new NetworkClient(this);
-        ChatBox = new Chatbox();
+        ChatBox = new Chatbox(this);
         StatisticsUI = new StatisticsUI();
         NametagUI = new NametagUI(this);
 
@@ -65,19 +65,33 @@ public class Main : Script {
         ChatBox.Draw();
         StatisticsUI.Draw();
         NametagUI.Draw();
+
+        ChatBox.ScaleForm.Render2D();
+        ChatBox.Tick();
+
+        Function.Call(Hash.SET_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME, 0f);
+        Function.Call(Hash.SET_RANDOM_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME, 0f);
+        Function.Call(Hash.SET_PARKED_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME, 0f);
+        Function.Call(Hash.SET_PED_DENSITY_MULTIPLIER_THIS_FRAME, 0f);
+        Function.Call(Hash.SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME, 0f, 0f);
+        Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 19, 1); // Disable character wheel
+        Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 44, 1); // Disable cover
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e) {
-        if (e.KeyCode == Keys.F5) {
-            ChatBox.Add("Hello! " + Guid.NewGuid());
-        }
+        ChatBox.KeyDown(sender, e);
     }
 
     private void OnKeyUp(object sender, KeyEventArgs e) {
         if (e.KeyCode == Keys.NumPad0) {
             if(NetworkClient.NetClient.ServerConnection == null) {
                 ChatBox.Add("Connecting to server...");
-                NetworkClient.Connect();
+
+                NetConnection connection = NetworkClient.Connect();
+                if (connection != null) {
+                    ChatBox.Add("Connected");
+                    InitializeGame();
+                }
             }
             else {
                 NetworkClient.Disconnect();
@@ -86,27 +100,17 @@ public class Main : Script {
         }
     }
 
-    private void ClearWorld() {
-        foreach(Vehicle vehicle in World.GetNearbyVehicles(Game.Player.Character.Position, 1024f)) {
+    private void InitializeGame() {
+        foreach(Vehicle vehicle in World.GetAllVehicles()) {
             vehicle.Delete();
         }
 
-        foreach (Ped ped in World.GetNearbyPeds(Game.Player.Character.Position, 1024f)) {
+        foreach (Ped ped in World.GetAllPeds()) {
             ped.Delete();
         }
-    }
 
-    public static Vector3 RotationToDirection(Vector3 Rotation) {
-        float z = Rotation.Z;
-        float num = z * 0.0174532924f;
-        float x = Rotation.X;
-        float num2 = x * 0.0174532924f;
-        float num3 = Math.Abs((float)Math.Cos((double)num2));
-        return new Vector3 {
-            X = (float)((double)((float)(-(float)Math.Sin((double)num))) * (double)num3),
-            Y = (float)((double)((float)Math.Cos((double)num)) * (double)num3),
-            Z = (float)Math.Sin((double)num2)
-        };
+        foreach(Blip blip in World.GetActiveBlips()) {
+            blip.Remove();
+        }
     }
-
 }

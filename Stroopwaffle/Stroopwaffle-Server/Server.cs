@@ -317,6 +317,20 @@ namespace Stroopwaffle_Server {
                                     }
                                     break;
 
+                                case PacketType.ChatMessage:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    string message = netIncomingMessage.ReadString();
+
+                                    if (networkPlayer.PlayerID == playerId) {
+                                        SendBroadcastMessagePacket("NetMessage: " + message);
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
                                 default:
                                     Form.Output("Invalid Packet");
                                     break;
@@ -408,7 +422,6 @@ namespace Stroopwaffle_Server {
                             outgoingMessage.Write(netPlayer.NetVehicle.PrimaryColor);
                             outgoingMessage.Write(netPlayer.NetVehicle.SecondaryColor);
                             outgoingMessage.Write(netPlayer.NetVehicle.Speed);
-                            Form.Output("Speed: " + netPlayer.NetVehicle.Speed);
                             SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                         }
                         else {

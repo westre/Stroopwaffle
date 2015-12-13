@@ -42,7 +42,7 @@ namespace Stroopwaffle_Server {
                 }
             }
             catch(Exception ex) {
-                Server.Form.Output(ex.Message);
+                Server.Form.Output(ex.StackTrace);
             }
         }
 
@@ -52,6 +52,7 @@ namespace Stroopwaffle_Server {
 
         // All functions
         public void API_broadcastMessage(string message) {
+            Server.Form.Output("API_DEBUG: " + message);
             Server.SendBroadcastMessagePacket(message);
         }
 

@@ -59,7 +59,7 @@ public class Main : Script {
     private void OnTick(object sender, EventArgs e) {
         // DEBUG
         Game.Player.IgnoredByEveryone = true;
-        Game.Player.IgnoredByPolice = true;      
+        Game.Player.IgnoredByPolice = true;    
 
         // GUI
         ChatBox.Draw();
@@ -76,6 +76,8 @@ public class Main : Script {
         Function.Call(Hash.SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME, 0f, 0f);
         Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 19, 1); // Disable character wheel
         Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 44, 1); // Disable cover
+        Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 171, 1); // Disable INPUT_SPECIAL_ABILITY_PC
+        Function.Call(Hash.SET_MAX_WANTED_LEVEL, 0);
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e) {

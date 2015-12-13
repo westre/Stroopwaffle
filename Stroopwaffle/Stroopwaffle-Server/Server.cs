@@ -84,6 +84,7 @@ namespace Stroopwaffle_Server {
                     throw new Exception("Script (" + ConfigData.Script + ") not found.");
 
                 API.Load(AppDomain.CurrentDomain.BaseDirectory + @"\scripts\" + ConfigData.Script);
+
                 API.Fire(API.Callback.OnScriptInitialize);
             }
             catch(Exception ex) {
@@ -100,10 +101,6 @@ namespace Stroopwaffle_Server {
                 timer.Start();
 
                 form.Output("Initialized server");
-                
-                API.Fire(API.Callback.OnPlayerChat, 2, "Hello!");
-                API.Fire(API.Callback.OnPlayerConnect, 2);
-
             }
             else {
                 form.Output("----ERRORS----");
@@ -169,6 +166,7 @@ namespace Stroopwaffle_Server {
                             switch (receivedPacket) {                                
                                 case PacketType.Initialization:
                                     NetworkPlayer networkPlayer = Find(netIncomingMessage.SenderConnection);
+                                    string files = netIncomingMessage.ReadString();
                                     
                                     // Allocate Player ID for the newly connected player
                                     int newPlayerId = FindAvailablePlayerID();
@@ -190,7 +188,16 @@ namespace Stroopwaffle_Server {
                                             FlushSendQueue();
 
                                             Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);
-                                            API.Fire(API.Callback.OnPlayerConnect, newPlayerId);
+                                            Form.Output("Files: " + files);
+
+                                            //API.Lua.DoString("playerFiles[" + newPlayerId + "] = {}");
+                                            //API.Lua.DoString("table.insert(playerFiles[" + newPlayerId + "], \"testval\")");
+
+                                            //object[] luaTable = files.Split(',');
+
+                                            API.Lua.DoString("a={1,2,3}");
+                                            LuaTable tab = API.Lua.GetTable("a");
+                                            API.Fire(API.Callback.OnPlayerConnect, newPlayerId, tab);
                                         }
                                         else {
                                             Form.Output("Could not allocate player id");
@@ -324,7 +331,7 @@ namespace Stroopwaffle_Server {
                                     string message = netIncomingMessage.ReadString();
 
                                     if (networkPlayer.PlayerID == playerId) {
-                                        SendBroadcastMessagePacket("NetMessage: " + message);
+                                        API.Fire(API.Callback.OnPlayerChat, playerId, message);
                                     }
                                     else {
                                         Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);

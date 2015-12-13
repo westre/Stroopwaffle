@@ -78,10 +78,12 @@ namespace Stroopwaffle {
             else if (e.KeyCode == Keys.Escape) {
                 InputString = "";
                 Focused = false;
-            }
+            }      
             else if (Focused) {
-                InputString += e.KeyCode.ToString();
-                ScaleForm.CallFunction("ADD_TEXT", e.KeyCode.ToString());
+                string keyChar = Utility.GetCharFromKey(e.KeyCode, Game.IsKeyPressed(Keys.ShiftKey), false);
+
+                InputString += keyChar;
+                ScaleForm.CallFunction("ADD_TEXT", keyChar);
             }
         }
     }

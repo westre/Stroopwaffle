@@ -6,6 +6,7 @@ using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -22,6 +23,8 @@ namespace Stroopwaffle {
         private int Switch { get; set; }
         private int BlockAimAtTimer { get; set; }
         private bool BlockAimAtTask { get; set; }
+
+        public int WorldRelationship { get; set; }
 
         public NetworkClient(Main main) {
             Main = main;
@@ -95,7 +98,7 @@ namespace Stroopwaffle {
             Vector3 camPosition = Function.Call<Vector3>(Hash.GET_GAMEPLAY_CAM_COORD);
             Vector3 rot = Function.Call<Vector3>(Hash.GET_GAMEPLAY_CAM_ROT, 0);
             Vector3 dir = Utility.RotationToDirection(rot);
-            Vector3 posLookAt = camPosition + dir * 10f;
+            Vector3 posLookAt = camPosition + dir * 1000f;
 
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Aiming);
@@ -135,9 +138,18 @@ namespace Stroopwaffle {
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.UnreliableSequenced);
         }
 
-        private void SendRequestionInitializationPacket() {
+        private void SendRequestInitializationPacket() {
+            // Send the directory contents to the server, to block the player if he has malicious files!
+            List<string> fileList = new List<string>();
+            string[] files = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory + @"\..\", "*.*", SearchOption.AllDirectories);
+            foreach(string file in files) {
+                fileList.Add(Path.GetFileName(file));
+            }
+            string fileString = string.Join(",", fileList);
+
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Initialization);
+            outgoingMessage.Write(fileString);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.ReliableOrdered);
         }
 
@@ -157,7 +169,7 @@ namespace Stroopwaffle {
                     NetConnectionStatus status = (NetConnectionStatus)netIncomingMessage.ReadByte();
 
                     if (status == NetConnectionStatus.Connected) {
-                        SendRequestionInitializationPacket();
+                        SendRequestInitializationPacket();
                         NetClient.FlushSendQueue();
                     }
                 }
@@ -186,8 +198,12 @@ namespace Stroopwaffle {
 
                         ServerPlayers = new List<NetworkPlayer>();
 
+                        WorldRelationship = World.AddRelationshipGroup("AMP_PED");
+                        World.SetRelationshipBetweenGroups(Relationship.Companion, WorldRelationship, Game.Player.Character.RelationshipGroup); // Make the opposing party ally us (no fleeing)
+                        World.SetRelationshipBetweenGroups(Relationship.Neutral, Game.Player.Character.RelationshipGroup, WorldRelationship);
+
                         // Debug
-                        Game.Player.Character.Weapons.Give(WeaponHash.Pistol, 500, true, true);
+                        Game.Player.Character.Weapons.Give(WeaponHash.Pistol, 9999, true, true);
                     }
                     else if (receivedPacket == PacketType.Deinitialization) {
                         int playerId = netIncomingMessage.ReadInt32();
@@ -297,6 +313,7 @@ namespace Stroopwaffle {
                             netVehicle.PhysicalVehicle = World.CreateVehicle(new Model(netVehicle.Hash), new Vector3(netVehicle.PosX, netVehicle.PosY, netVehicle.PosZ), 0);
                             netVehicle.PhysicalVehicle.IsInvincible = true;
                             netVehicle.PhysicalVehicle.EngineRunning = true;
+                            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, netVehicle.PhysicalVehicle, true, true); // More control for us, less control for Rockstar
                             networkPlayer.NetVehicle = netVehicle;
 
                             networkPlayer.Ped.Task.WarpIntoVehicle(networkPlayer.NetVehicle.PhysicalVehicle, VehicleSeat.Driver);
@@ -342,6 +359,9 @@ namespace Stroopwaffle {
                             networkPlayer.Ped.AddBlip();
                             networkPlayer.Ped.CurrentBlip.Color = BlipColor.White;
                             networkPlayer.Ped.CurrentBlip.Scale = 0.8f;
+                            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, networkPlayer.Ped, true, true); // More control for us, less control for Rockstar
+                            networkPlayer.Ped.RelationshipGroup = WorldRelationship;
+                            
 
                             if (PlayerID == networkPlayer.PlayerID) {
                                 Main.ChatBox.Add("(internal) - This is also our LocalPlayer");
@@ -370,12 +390,15 @@ namespace Stroopwaffle {
                                 }
                             }
                             else if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && !BlockAimAtTask) {
-                                networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 100);
+                                networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 200);
                             }
 
                             if (networkPlayer.Shooting == 1) {
-                                networkPlayer.Ped.ShootRate = 1000;
-                                networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 500);
+                                //Function.Call(Hash.SHOOT_SINGLE_BULLET_BETWEEN_COORDS, networkPlayer.Ped.Position.X, networkPlayer.Ped.Position.Y, networkPlayer.Ped.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 50, true, 0x1B06D571, networkPlayer.Ped, true, false, 100);
+
+                                networkPlayer.Ped.ShootRate = 100000;
+                                networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 325);
+
                                 BlockAimAtTask = true;
                             }
 
@@ -385,12 +408,17 @@ namespace Stroopwaffle {
                                 }
                             }
                         }
-                        
+
                         networkPlayer.Position = new Vector3(posX, posY, posZ);
+
+                        // Force reset position if we are too desyncy
+                        if (!networkPlayer.Ped.IsInRangeOf(networkPlayer.Position, 15f)) {
+                            networkPlayer.Ped.Position = networkPlayer.Position;
+                        }
 
                         if (BlockAimAtTask) {
                             BlockAimAtTimer++;
-                            if (BlockAimAtTimer == 50) {
+                            if (BlockAimAtTimer == 33) {
                                 BlockAimAtTimer = 0;
                                 BlockAimAtTask = false;
                             }

@@ -11,8 +11,13 @@ using System.Windows.Forms;
 namespace Stroopwaffle_Server {
     public class Server : NetServer {
         public ServerForm Form { get; set; }
+
         public List<NetworkPlayer> Players { get; set; }
+        public List<NetworkVehicle> Vehicles { get; set; }
+
         private bool[] PlayerIDs { get; set; }
+        private bool[] VehicleIDs { get; set; }
+
         private API API { get; set; }
 
         public struct ConfigurationData {
@@ -70,6 +75,10 @@ namespace Stroopwaffle_Server {
             PlayerIDs = new bool[100];
             // Create list for holding our players
             Players = new List<NetworkPlayer>();
+            // Create list to hold our vehicles
+            Vehicles = new List<NetworkVehicle>();
+            // Allocate 100 potential vehicle ids
+            VehicleIDs = new bool[100];
 
             // Load configuration file
             try {
@@ -97,7 +106,7 @@ namespace Stroopwaffle_Server {
 
                 System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
                 timer.Interval = 10;
-                timer.Tick += BroadcastPlayerData;
+                timer.Tick += Tick;
                 timer.Start();
 
                 form.Output("Initialized server");
@@ -113,8 +122,8 @@ namespace Stroopwaffle_Server {
             }
         }
 
-        private void BroadcastPlayerData(object sender, EventArgs e) {
-            SendPlayerListPacket();
+        private void Tick(object sender, EventArgs e) {
+            SendUpdate();
         }
 
         public void Application_Idle(object sender, EventArgs e) {
@@ -187,16 +196,18 @@ namespace Stroopwaffle_Server {
                                             SendInitializationPacket(networkPlayer.NetConnection, networkPlayer.PlayerID, networkPlayer.Position, networkPlayer.SafeForNet);
                                             FlushSendQueue();
 
-                                            Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);
-                                            Form.Output("Files: " + files);
+                                            Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);                                    
 
-                                            //API.Lua.DoString("playerFiles[" + newPlayerId + "] = {}");
-                                            //API.Lua.DoString("table.insert(playerFiles[" + newPlayerId + "], \"testval\")");
+                                            string[] fileArray = files.Split(',');
+                                            Form.Output("File count: " + fileArray.Length);
 
-                                            //object[] luaTable = files.Split(',');
+                                            API.Lua.DoString("filesTable = {}");
 
-                                            API.Lua.DoString("a={1,2,3}");
-                                            LuaTable tab = API.Lua.GetTable("a");
+                                            foreach(string file in fileArray) {
+                                                API.Lua.DoString("table.insert(filesTable, \"" + file + "\")");
+                                            }
+                                            
+                                            LuaTable tab = API.Lua.GetTable("filesTable");
                                             API.Fire(API.Callback.OnPlayerConnect, newPlayerId, tab);
                                         }
                                         else {
@@ -283,12 +294,20 @@ namespace Stroopwaffle_Server {
 
                                     playerId = netIncomingMessage.ReadInt32();
 
-                                    networkPlayer.NetVehicle = null;
+                                    if(networkPlayer.NetVehicle != null) {
+                                        NetworkVehicle sourceVehicle = NetworkVehicle.Exists(Vehicles, networkPlayer.NetVehicle.ID);
+                                        sourceVehicle.PlayerID = -1;
+
+                                        SendNoVehiclePacket(networkPlayer);
+                                        networkPlayer.NetVehicle = null;
+                                    }
+                             
                                     break;
 
-                                case PacketType.Vehicle:
+                                case PacketType.TotalVehicleData:
                                     networkPlayer = Find(netIncomingMessage.SenderConnection);
 
+                                    int vehicleId = netIncomingMessage.ReadInt32();
                                     playerId = netIncomingMessage.ReadInt32();
                                     int vehicleHash = netIncomingMessage.ReadInt32();
                                     float posX = netIncomingMessage.ReadFloat();
@@ -302,25 +321,22 @@ namespace Stroopwaffle_Server {
                                     int secondaryColor = netIncomingMessage.ReadInt32();
                                     float speed = netIncomingMessage.ReadFloat();
 
-                                    if (networkPlayer.PlayerID == playerId) {
-                                        NetworkVehicle netVehicle = new NetworkVehicle();
-                                        netVehicle.Hash = vehicleHash;
-                                        netVehicle.PosX = posX;
-                                        netVehicle.PosY = posY;
-                                        netVehicle.PosZ = posZ;
-                                        netVehicle.RotW = rotW;
-                                        netVehicle.RotX = rotX;
-                                        netVehicle.RotY = rotY;
-                                        netVehicle.RotZ = rotZ;
-                                        netVehicle.PrimaryColor = primaryColor;
-                                        netVehicle.SecondaryColor = secondaryColor;
-                                        netVehicle.Speed = speed;
+                                    NetworkVehicle networkVehicle = NetworkVehicle.Exists(Vehicles, vehicleId);
+                                    if(networkVehicle != null) {
+                                        networkVehicle.PlayerID = playerId;
+                                        networkVehicle.PosX = posX;
+                                        networkVehicle.PosY = posY;
+                                        networkVehicle.PosZ = posZ;
+                                        networkVehicle.RotW = rotW;
+                                        networkVehicle.RotX = rotX;
+                                        networkVehicle.RotY = rotY;
+                                        networkVehicle.RotZ = rotZ;
 
-                                        networkPlayer.NetVehicle = netVehicle;
-                                        //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
+                                        networkPlayer.NetVehicle = networkVehicle;
+                                        //Form.Output("Updated vehicleId: " + vehicleId + ", posX: " + posX);
                                     }
                                     else {
-                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                        Form.Output("ERROR: NON REGISTERED VEHICLE FOUND?!");
                                     }
                                     break;
 
@@ -351,6 +367,15 @@ namespace Stroopwaffle_Server {
                 }
                 Thread.Sleep(1);
             }
+        }
+
+        public void SendNoVehiclePacket(NetworkPlayer source) {
+            if (GetAllConnections().Count == 0) return;
+
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.NoVehicle);
+            outgoingMessage.Write(source.PlayerID);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
         }
 
         public void SendBroadcastMessagePacket(string message) {
@@ -394,7 +419,7 @@ namespace Stroopwaffle_Server {
             SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.ReliableOrdered);
         }
 
-        private void SendPlayerListPacket() {
+        private void SendUpdate() {
             if (Players.Count > 0) {
                 foreach (NetworkPlayer netPlayer in Players) {
                     if(netPlayer.SafeForNet) {
@@ -414,7 +439,7 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.Shooting);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
 
-                        if(netPlayer.NetVehicle != null) {
+                        /*if(netPlayer.NetVehicle != null) {
                             outgoingMessage = CreateMessage();
                             outgoingMessage.Write((byte)PacketType.Vehicle);
                             outgoingMessage.Write(netPlayer.PlayerID);
@@ -436,8 +461,28 @@ namespace Stroopwaffle_Server {
                             outgoingMessage.Write((byte)PacketType.NoVehicle);
                             outgoingMessage.Write(netPlayer.PlayerID);
                             SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
-                        }
+                        }*/
                     }
+                }
+                
+                foreach(NetworkVehicle networkVehicle in Vehicles) {
+                    NetOutgoingMessage outgoingMessage = CreateMessage();
+                    outgoingMessage = CreateMessage();
+                    outgoingMessage.Write((byte)PacketType.TotalVehicleData);
+                    outgoingMessage.Write(networkVehicle.ID);
+                    outgoingMessage.Write(networkVehicle.PlayerID);
+                    outgoingMessage.Write(networkVehicle.Hash);
+                    outgoingMessage.Write(networkVehicle.PosX);
+                    outgoingMessage.Write(networkVehicle.PosY);
+                    outgoingMessage.Write(networkVehicle.PosZ);
+                    outgoingMessage.Write(networkVehicle.RotW);
+                    outgoingMessage.Write(networkVehicle.RotX);
+                    outgoingMessage.Write(networkVehicle.RotY);
+                    outgoingMessage.Write(networkVehicle.RotZ);
+                    outgoingMessage.Write(networkVehicle.PrimaryColor);
+                    outgoingMessage.Write(networkVehicle.SecondaryColor);
+                    outgoingMessage.Write(networkVehicle.Speed);
+                    SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                 }   
             }            
         }
@@ -485,6 +530,33 @@ namespace Stroopwaffle_Server {
                 return true;
             }
             return false;
-        } 
+        }
+
+        private int FindAvailableVehicleID() {
+            for (int index = 0; index < VehicleIDs.Length; index++) {
+                if (!VehicleIDs[index]) {
+                    return index;
+                }
+            }
+            return -1;
+        }
+
+        private bool AllocateVehicleID(int vehicleId) {
+            if (!VehicleIDs[vehicleId]) {
+                VehicleIDs[vehicleId] = true;
+                return true;
+            }
+            return false;
+        }
+
+        public void RegisterVehicle(NetworkVehicle networkVehicle) {
+            int vehicleId = FindAvailableVehicleID();
+
+            networkVehicle.ID = vehicleId;
+            networkVehicle.PlayerID = -1;
+            Form.Output("Allocated vehicle id: " + vehicleId);
+
+            Vehicles.Add(networkVehicle);
+        }
     }
 }

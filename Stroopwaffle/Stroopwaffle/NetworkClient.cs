@@ -16,7 +16,6 @@ namespace Stroopwaffle {
     public class NetworkClient {
         private Main Main { get; set; }
         public NetClient NetClient { get; set; }
-        public int PlayerID { get; set; } = -1;
         private List<NetworkPlayer> ServerPlayers { get; set; }
         public bool SafeForNet { get; set; }
 
@@ -26,11 +25,16 @@ namespace Stroopwaffle {
 
         public int WorldRelationship { get; set; }
 
+        public List<NetworkVehicle> Vehicles { get; set; }
+
         public NetworkClient(Main main) {
             Main = main;
 
             NetPeerConfiguration config = new NetPeerConfiguration("wh");
             config.AutoFlushSendQueue = false;
+
+            ServerPlayers = new List<NetworkPlayer>();
+            Vehicles = new List<NetworkVehicle>();
 
             NetClient = new NetClient(config);
             NetClient.Start();
@@ -57,7 +61,12 @@ namespace Stroopwaffle {
             }
 
             if(Game.Player.Character.CurrentVehicle != null) {
-                SendVehiclePacket(Game.Player.Character.CurrentVehicle);
+                foreach(NetworkVehicle networkVehicle in Vehicles) {
+                    if(Game.Player.Character.CurrentVehicle.IsInRangeOf(networkVehicle.PhysicalVehicle.Position, 1f)) {
+                        SendVehiclePacket(networkVehicle, GetLocalPlayer()); // PlayerID
+                        break;
+                    }
+                }
             }
             else {
                 SendNoVehiclePacket();
@@ -72,14 +81,17 @@ namespace Stroopwaffle {
         private void SendNoVehiclePacket() {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.NoVehicle);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(GetLocalPlayer().PlayerID);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
         }
 
-        private void SendVehiclePacket(Vehicle vehicle) {
+        private void SendVehiclePacket(NetworkVehicle netVehicle, NetworkPlayer netPlayer) {
+            Vehicle vehicle = netVehicle.PhysicalVehicle;
+
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
-            outgoingMessage.Write((byte)PacketType.Vehicle);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write((byte)PacketType.TotalVehicleData);
+            outgoingMessage.Write(netVehicle.ID);
+            outgoingMessage.Write(netPlayer.PlayerID);
             outgoingMessage.Write(vehicle.Model.Hash);
             outgoingMessage.Write(vehicle.Position.X + 10.0f);
             outgoingMessage.Write(vehicle.Position.Y);
@@ -102,7 +114,7 @@ namespace Stroopwaffle {
 
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Aiming);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(GetLocalPlayer().PlayerID);
             outgoingMessage.Write(aimState);
             outgoingMessage.Write(posLookAt.X);
             outgoingMessage.Write(posLookAt.Y);
@@ -113,7 +125,7 @@ namespace Stroopwaffle {
         private void SendPositionPacket() {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Position);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(GetLocalPlayer().PlayerID);
             outgoingMessage.Write(Game.Player.Character.Position.X + 3.0f);
             outgoingMessage.Write(Game.Player.Character.Position.Y);
             outgoingMessage.Write(World.GetGroundHeight(Game.Player.Character.Position));
@@ -123,7 +135,7 @@ namespace Stroopwaffle {
         private void SendRotationPacket() {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Rotation);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(GetLocalPlayer().PlayerID);
             outgoingMessage.Write(Game.Player.Character.Rotation.X);
             outgoingMessage.Write(Game.Player.Character.Rotation.Y);
             outgoingMessage.Write(Game.Player.Character.Rotation.Z);
@@ -133,7 +145,7 @@ namespace Stroopwaffle {
         private void SendShootingPacket(int shootState) {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.Shooting);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(GetLocalPlayer().PlayerID);
             outgoingMessage.Write(shootState);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.UnreliableSequenced);
         }
@@ -156,7 +168,7 @@ namespace Stroopwaffle {
         public void SendStringMessagePacket(string message) {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.ChatMessage);
-            outgoingMessage.Write(PlayerID);
+            outgoingMessage.Write(GetLocalPlayer().PlayerID);
             outgoingMessage.Write(message);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.ReliableOrdered);
         }
@@ -184,7 +196,7 @@ namespace Stroopwaffle {
                         bool safeForNet = netIncomingMessage.ReadBoolean();
 
                         // Sets actual playerid
-                        PlayerID = playerId;
+                        CreatePlayer(playerId, posX, posY, posZ, true);
 
                         // Changes the physical location
                         Vector3 position = new Vector3(posX, posY, posZ);
@@ -193,10 +205,8 @@ namespace Stroopwaffle {
                         // Sets safe for net flag
                         SafeForNet = safeForNet;
 
-                        Main.ChatBox.Add("(internal) Allocated PlayerID: " + PlayerID);
+                        Main.ChatBox.Add("(internal) Allocated PlayerID: " + GetLocalPlayer().PlayerID);
                         Main.ChatBox.Add("(internal) Packet data: " + receivedPacket + ", " + playerId + ", " + posX + ", " + posY + ", " + posZ + ", " + safeForNet);
-
-                        ServerPlayers = new List<NetworkPlayer>();
 
                         WorldRelationship = World.AddRelationshipGroup("AMP_PED");
                         World.SetRelationshipBetweenGroups(Relationship.Companion, WorldRelationship, Game.Player.Character.RelationshipGroup); // Make the opposing party ally us (no fleeing)
@@ -238,87 +248,12 @@ namespace Stroopwaffle {
                         if(networkPlayer.NetVehicle != null) {
                             Main.ChatBox.Add("Received NoVehicle Packet, NetVehicle != null, removing Vehicle from Entities: " + networkPlayer.PlayerID);
 
+                            NetworkVehicle sourceVehicle = NetworkVehicle.Exists(Vehicles, networkPlayer.NetVehicle.ID);
+                            sourceVehicle.PlayerID = -1;
+
                             networkPlayer.Ped.Task.WarpOutOfVehicle(networkPlayer.NetVehicle.PhysicalVehicle);
                             networkPlayer.NetVehicle = null;
                         }
-                    }
-                    else if (receivedPacket == PacketType.Vehicle) {
-                        int playerId = netIncomingMessage.ReadInt32();
-                        int vehicleHash = netIncomingMessage.ReadInt32();
-                        float posX = netIncomingMessage.ReadFloat();
-                        float posY = netIncomingMessage.ReadFloat();
-                        float posZ = netIncomingMessage.ReadFloat();
-                        float rotW = netIncomingMessage.ReadFloat();
-                        float rotX = netIncomingMessage.ReadFloat();
-                        float rotY = netIncomingMessage.ReadFloat();
-                        float rotZ = netIncomingMessage.ReadFloat();
-                        int primaryColor = netIncomingMessage.ReadInt32();
-                        int secondaryColor = netIncomingMessage.ReadInt32();
-                        float speed = netIncomingMessage.ReadFloat();
-
-                        // Check to see if this player is already in our list
-                        NetworkPlayer networkPlayer = null;
-                        foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
-                            if (serverNetworkPlayer.PlayerID == playerId)
-                                networkPlayer = serverNetworkPlayer;
-                        }
-
-                        if(networkPlayer.NetVehicle != null) {
-                            networkPlayer.NetVehicle.Hash = vehicleHash;
-                            networkPlayer.NetVehicle.PosX = posX;
-                            networkPlayer.NetVehicle.PosY = posY;
-                            networkPlayer.NetVehicle.PosZ = posZ;
-                            networkPlayer.NetVehicle.RotW = rotW;
-                            networkPlayer.NetVehicle.RotX = rotX;
-                            networkPlayer.NetVehicle.RotY = rotY;
-                            networkPlayer.NetVehicle.RotZ = rotZ;
-                            networkPlayer.NetVehicle.PrimaryColor = primaryColor;
-                            networkPlayer.NetVehicle.SecondaryColor = secondaryColor;
-                            networkPlayer.NetVehicle.Speed = speed;
-
-                            NetworkVehicle netVehicle = networkPlayer.NetVehicle;
-
-                            var distance = new Vector3(posX, posY, posZ) - netVehicle.PhysicalVehicle.Position;
-                            distance.Normalize();
-
-                            netVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
-
-                            if (speed >= 1 && (Switch % 3 == 0)) {
-                                var direction = distance * Math.Abs(speed - netVehicle.PhysicalVehicle.Speed);
-                                netVehicle.PhysicalVehicle.ApplyForce(direction);
-                            }
-
-                            // Force reset position
-                            /*
-                            if(!netVehicle.PhysicalVehicle.IsInRangeOf(new Vector3(posX, posY, posZ), 1f)) {
-                                netVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ);
-                            }
-                            */
-                        }
-                        else {
-                            Main.ChatBox.Add("No NetVehicle found.. create one: " + networkPlayer.PlayerID);
-
-                            NetworkVehicle netVehicle = new NetworkVehicle();
-                            netVehicle.Hash = vehicleHash;
-                            netVehicle.PosX = posX;
-                            netVehicle.PosY = posY;
-                            netVehicle.PosZ = posZ;
-                            netVehicle.RotW = rotW;
-                            netVehicle.RotX = rotX;
-                            netVehicle.RotY = rotY;
-                            netVehicle.RotZ = rotZ;
-                            netVehicle.PrimaryColor = primaryColor;
-                            netVehicle.SecondaryColor = secondaryColor;
-
-                            netVehicle.PhysicalVehicle = World.CreateVehicle(new Model(netVehicle.Hash), new Vector3(netVehicle.PosX, netVehicle.PosY, netVehicle.PosZ), 0);
-                            netVehicle.PhysicalVehicle.IsInvincible = true;
-                            netVehicle.PhysicalVehicle.EngineRunning = true;
-                            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, netVehicle.PhysicalVehicle, true, true); // More control for us, less control for Rockstar
-                            networkPlayer.NetVehicle = netVehicle;
-
-                            networkPlayer.Ped.Task.WarpIntoVehicle(networkPlayer.NetVehicle.PhysicalVehicle, VehicleSeat.Driver);
-                        }
-                        //Main.ChatBox.Add("PosX: " + posX + ", PosY: " + posY + ", PosZ: " + posZ);
                     }
                     else if (receivedPacket == PacketType.TotalPlayerData) {
                         int playerId = netIncomingMessage.ReadInt32();
@@ -343,34 +278,7 @@ namespace Stroopwaffle {
 
                         // Seems like this is a new player
                         if (networkPlayer == null) {
-                            networkPlayer = new NetworkPlayer();
-                            networkPlayer.PlayerID = playerId;
-                            networkPlayer.Position = new Vector3(posX, posY, posZ);
-
-                            // Create the physical ped
-                            networkPlayer.Ped = World.CreatePed(PedHash.FibArchitect, networkPlayer.Position);
-                            networkPlayer.Ped.Weapons.Give(WeaponHash.Pistol, 500, true, true);
-
-                            // DEBUG, not sure how this should be sorted out, reminder clone testing!
-                            networkPlayer.Ped.RelationshipGroup = Game.Player.Character.RelationshipGroup;
-                            networkPlayer.Ped.BlockPermanentEvents = true;
-                            networkPlayer.Ped.CanRagdoll = false;
-                            networkPlayer.Ped.IsInvincible = true;
-                            networkPlayer.Ped.AddBlip();
-                            networkPlayer.Ped.CurrentBlip.Color = BlipColor.White;
-                            networkPlayer.Ped.CurrentBlip.Scale = 0.8f;
-                            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, networkPlayer.Ped, true, true); // More control for us, less control for Rockstar
-                            networkPlayer.Ped.RelationshipGroup = WorldRelationship;
-                            
-
-                            if (PlayerID == networkPlayer.PlayerID) {
-                                Main.ChatBox.Add("(internal) - This is also our LocalPlayer");
-                                networkPlayer.LocalPlayer = true;
-                            }
-
-                            ServerPlayers.Add(networkPlayer);
-
-                            Main.ChatBox.Add("(internal) Added PlayerID " + networkPlayer.PlayerID + " to the ServerPlayers list");
+                            networkPlayer = CreatePlayer(playerId, posX, posY, posZ, false);
                         }
 
                         Point namePlate = UI.WorldToScreen(networkPlayer.Ped.Position + new Vector3(0, 0, 1.3f));
@@ -425,6 +333,89 @@ namespace Stroopwaffle {
                         }
                         Switch++;
                     }
+                    else if(receivedPacket == PacketType.TotalVehicleData) {
+                        if(GetLocalPlayer() == null) {
+                            return;
+                        }
+                        
+                        int id = netIncomingMessage.ReadInt32();
+                        int playerId = netIncomingMessage.ReadInt32();
+                        int vehicleHash = netIncomingMessage.ReadInt32();
+                        float posX = netIncomingMessage.ReadFloat();
+                        float posY = netIncomingMessage.ReadFloat();
+                        float posZ = netIncomingMessage.ReadFloat();
+                        float rotW = netIncomingMessage.ReadFloat();
+                        float rotX = netIncomingMessage.ReadFloat();
+                        float rotY = netIncomingMessage.ReadFloat();
+                        float rotZ = netIncomingMessage.ReadFloat();
+                        int primaryColor = netIncomingMessage.ReadInt32();
+                        int secondaryColor = netIncomingMessage.ReadInt32();
+                        float speed = netIncomingMessage.ReadFloat();
+
+                        NetworkVehicle networkVehicle = NetworkVehicle.Exists(Vehicles, id);
+
+                        // It exists in our list
+                        if(networkVehicle == null) {
+                            networkVehicle = new NetworkVehicle();
+
+                            // Client side only!
+                            networkVehicle.PhysicalVehicle = World.CreateVehicle(VehicleHash.Adder, new Vector3(posX, posY, posZ));
+                            networkVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+                            networkVehicle.PhysicalVehicle.CanTiresBurst = false;
+                            networkVehicle.PhysicalVehicle.PlaceOnGround();
+                            networkVehicle.PhysicalVehicle.NumberPlate = "ID: " + id;
+                            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, networkVehicle.PhysicalVehicle, true, true); // More control for us, less control for Rockstar
+
+                            Vehicles.Add(networkVehicle);
+                            Main.ChatBox.Add("(internal) Added new vehicle id: " + id);
+                        }
+
+                        if(networkVehicle.PlayerID != GetLocalPlayer().PlayerID) {
+                            var distance = new Vector3(posX, posY, posZ) - networkVehicle.PhysicalVehicle.Position;
+                            distance.Normalize();
+
+                            networkVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+
+                            if (speed >= 1 && (Switch % 3 == 0)) {
+                                var direction = distance * Math.Abs(speed - networkVehicle.PhysicalVehicle.Speed);
+                                networkVehicle.PhysicalVehicle.ApplyForce(direction);
+                            }
+                        }
+
+                        // -1 to playerId, or other playerId means someone entered the vehicle!
+                        if(networkVehicle.PlayerID != playerId) {
+                            NetworkPlayer driver = NetworkPlayer.Get(ServerPlayers, playerId);
+                            if(driver != null) {
+                                driver.Ped.Task.WarpIntoVehicle(networkVehicle.PhysicalVehicle, VehicleSeat.Passenger);
+                                driver.NetVehicle = networkVehicle;
+                                Main.ChatBox.Add("(internal) Set driver ped");
+                            }
+                            else {
+                                Main.ChatBox.Add("(internal error) driver is null");
+                            }
+                        }
+
+                        // Force reset position
+                        /*
+                        if(!netVehicle.PhysicalVehicle.IsInRangeOf(new Vector3(posX, posY, posZ), 1f)) {
+                            netVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ);
+                        }
+                        */
+
+                        networkVehicle.ID = id;
+                        networkVehicle.PlayerID = playerId;
+                        networkVehicle.Hash = vehicleHash;
+                        networkVehicle.PosX = posX;
+                        networkVehicle.PosY = posY;
+                        networkVehicle.PosZ = posZ;
+                        networkVehicle.RotW = rotW;
+                        networkVehicle.RotX = rotX;
+                        networkVehicle.RotY = rotY;
+                        networkVehicle.RotZ = rotZ;
+                        networkVehicle.PrimaryColor = primaryColor;
+                        networkVehicle.SecondaryColor = secondaryColor;
+                        networkVehicle.Speed = speed;
+                    }
                 }
                 NetClient.Recycle(netIncomingMessage);
             }
@@ -439,11 +430,45 @@ namespace Stroopwaffle {
         }
 
         public NetworkPlayer GetLocalPlayer() {
-            foreach(NetworkPlayer networkPlayer in ServerPlayers) {
-                if (networkPlayer.LocalPlayer)
-                    return networkPlayer;
+            if(ServerPlayers != null) {
+                foreach (NetworkPlayer networkPlayer in ServerPlayers) {
+                    if (networkPlayer.LocalPlayer)
+                        return networkPlayer;
+                }
             }
+            else {
+                Main.ChatBox.Add("SP is Null?");
+            }
+            
             return null;
+        }
+
+        private NetworkPlayer CreatePlayer(int playerId, float posX, float posY, float posZ, bool localPlayer) {
+            NetworkPlayer networkPlayer = new NetworkPlayer();
+            networkPlayer.PlayerID = playerId;
+            networkPlayer.Position = new Vector3(posX, posY, posZ);
+            networkPlayer.LocalPlayer = localPlayer;
+
+            // Create the physical ped
+            networkPlayer.Ped = World.CreatePed(PedHash.FibArchitect, networkPlayer.Position);
+            networkPlayer.Ped.Weapons.Give(WeaponHash.Pistol, 500, true, true);
+
+            // DEBUG, not sure how this should be sorted out, reminder clone testing!
+            networkPlayer.Ped.RelationshipGroup = Game.Player.Character.RelationshipGroup;
+            networkPlayer.Ped.BlockPermanentEvents = true;
+            networkPlayer.Ped.CanRagdoll = false;
+            networkPlayer.Ped.IsInvincible = true;
+            networkPlayer.Ped.AddBlip();
+            networkPlayer.Ped.CurrentBlip.Color = BlipColor.White;
+            networkPlayer.Ped.CurrentBlip.Scale = 0.8f;
+            Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, networkPlayer.Ped, true, true); // More control for us, less control for Rockstar
+            networkPlayer.Ped.RelationshipGroup = WorldRelationship;
+
+            ServerPlayers.Add(networkPlayer);
+
+            Main.ChatBox.Add("(internal) Added PlayerID " + networkPlayer.PlayerID + " to the ServerPlayers list");
+
+            return networkPlayer;
         }
     }
 }

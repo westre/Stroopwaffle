@@ -1,5 +1,6 @@
 ﻿using Lidgren.Network;
 using NLua;
+using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -32,6 +33,7 @@ namespace Stroopwaffle_Server {
         private void RegisterAllFunctions() {
             Lua.RegisterFunction("broadcastMessage", this, typeof(API).GetMethod("API_broadcastMessage"));
             Lua.RegisterFunction("broadcastPlayerMessage", this, typeof(API).GetMethod("API_broadcastPlayerMessage"));
+            Lua.RegisterFunction("createVehicle", this, typeof(API).GetMethod("API_createVehicle"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -42,7 +44,7 @@ namespace Stroopwaffle_Server {
                 }
             }
             catch(Exception ex) {
-                Server.Form.Output(ex.StackTrace);
+                Server.Form.Output(ex.ToString());
             }
         }
 
@@ -65,6 +67,20 @@ namespace Stroopwaffle_Server {
             else {
                 Server.Form.Output("Error, API_broadcastPlayerMessage -> netConnection is null");
             }          
+        }
+
+        public void API_createVehicle(int vehicleHash, int posX, int posY, int posZ, int rotX, int rotY, int rotZ, int rotW) {
+            NetworkVehicle networkVehicle = new NetworkVehicle();
+            networkVehicle.Hash = vehicleHash;
+            networkVehicle.PosX = posX;
+            networkVehicle.PosY = posY;
+            networkVehicle.PosZ = posZ;
+            networkVehicle.RotX = rotX;
+            networkVehicle.RotY = rotY;
+            networkVehicle.RotZ = rotZ;
+            networkVehicle.RotW = rotW;
+
+            Server.RegisterVehicle(networkVehicle);
         }
     }
 }

@@ -14,7 +14,7 @@ namespace Stroopwaffle_Shared {
         TotalPlayerData,
         Deinitialization,
         ChatMessage,
-        Vehicle,
-        NoVehicle
+        NoVehicle,
+        TotalVehicleData
     }
 }

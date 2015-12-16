@@ -11,7 +11,7 @@ namespace Stroopwaffle {
         private bool focused;       
         public string InputString { get; set; }
 
-        public Chatbox(Main Main) : base(new Point(10, 10), new Size(400, 160), Color.FromArgb(100, 0, 0, 0)) {
+        public Chatbox(Main Main) : base(new Point(10, 10), new Size(400, 160), Color.FromArgb(0, 0, 0, 0)) {
             this.Main = Main;
 
             int x = 5;

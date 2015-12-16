@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 
 namespace Stroopwaffle_Shared {
     public class NetworkVehicle {
+        public int ID { get; set; }
+        public int PlayerID { get; set; }
         public int Hash { get; set; }
         public float PosX { get; set; }
         public float PosY { get; set; }
@@ -21,5 +23,13 @@ namespace Stroopwaffle_Shared {
 
         // Clientside only
         public Vehicle PhysicalVehicle { get; set; }
+
+        public static NetworkVehicle Exists(List<NetworkVehicle> vehicles, int id) {
+            foreach(NetworkVehicle vehicle in vehicles) {
+                if (vehicle.ID == id)
+                    return vehicle;
+            }
+            return null;
+        }
     }
 }

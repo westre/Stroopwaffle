@@ -26,5 +26,13 @@ namespace Stroopwaffle {
         public NetworkPlayer() {
             
         }
+
+        public static NetworkPlayer Get(List<NetworkPlayer> players, int id) {
+            foreach (NetworkPlayer player in players) {
+                if (player.PlayerID == id)
+                    return player;
+            }
+            return null;
+        }
     }
 }

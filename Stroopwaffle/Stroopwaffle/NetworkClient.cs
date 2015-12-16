@@ -49,36 +49,38 @@ namespace Stroopwaffle {
         }
 
         public void WritePackets() {
-            if (Game.Player.IsAiming) {
-                SendAimingPacket(1);
-            }
-            else {
-                SendAimingPacket(0);
-            }
+            if(GetLocalPlayer() != null) {
+                if (Game.Player.IsAiming) {
+                    SendAimingPacket(1);
+                }
+                else {
+                    SendAimingPacket(0);
+                }
 
-            if (Game.Player.Character.IsShooting) {
-                SendShootingPacket(1);
-            }
-            else {
-                SendShootingPacket(0);
-            }
+                if (Game.Player.Character.IsShooting) {
+                    SendShootingPacket(1);
+                }
+                else {
+                    SendShootingPacket(0);
+                }
 
-            if(Game.Player.Character.CurrentVehicle != null) {
-                foreach(NetworkVehicle networkVehicle in Vehicles) {
-                    if(Game.Player.Character.CurrentVehicle.IsInRangeOf(networkVehicle.PhysicalVehicle.Position, 1f)) {
-                        SendVehiclePacket(networkVehicle, GetLocalPlayer()); // PlayerID
-                        break;
+                if (Game.Player.Character.CurrentVehicle != null) {
+                    foreach (NetworkVehicle networkVehicle in Vehicles) {
+                        if (Game.Player.Character.CurrentVehicle.IsInRangeOf(networkVehicle.PhysicalVehicle.Position, 1f)) {
+                            SendVehiclePacket(networkVehicle, GetLocalPlayer()); // PlayerID
+                            break;
+                        }
                     }
                 }
-            }
-            else {
-                SendNoVehiclePacket();
-            }
-                
-            SendPositionPacket();
-            SendRotationPacket();
+                else {
+                    SendNoVehiclePacket();
+                }
 
-            NetClient.FlushSendQueue();
+                SendPositionPacket();
+                SendRotationPacket();
+
+                NetClient.FlushSendQueue();
+            }
         }
 
         private void SendNoVehiclePacket() {
@@ -180,7 +182,7 @@ namespace Stroopwaffle {
             NetIncomingMessage netIncomingMessage;
 
             while ((netIncomingMessage = NetClient.ServerConnection.Peer.ReadMessage()) != null) {
-                if(netIncomingMessage.MessageType == NetIncomingMessageType.StatusChanged) {
+                if (netIncomingMessage.MessageType == NetIncomingMessageType.StatusChanged) {
                     NetConnectionStatus status = (NetConnectionStatus)netIncomingMessage.ReadByte();
 
                     if (status == NetConnectionStatus.Connected) {

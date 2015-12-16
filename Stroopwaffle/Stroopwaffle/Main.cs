@@ -59,7 +59,7 @@ public class Main : Script {
     private void OnTick(object sender, EventArgs e) {
         // DEBUG
         Game.Player.IgnoredByEveryone = true;
-        Game.Player.IgnoredByPolice = true;    
+        Game.Player.IgnoredByPolice = true;
 
         // GUI
         ChatBox.Draw();

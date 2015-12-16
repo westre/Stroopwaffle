@@ -180,39 +180,34 @@ namespace Stroopwaffle_Server {
                                     // Allocate Player ID for the newly connected player
                                     int newPlayerId = FindAvailablePlayerID();
                                     if (newPlayerId != -1) {
-                                        if (AllocatePlayerID(newPlayerId)) {
-                                            // PlayerID for newly created player
-                                            networkPlayer.PlayerID = newPlayerId;                                        
+                                        // PlayerID for newly created player
+                                        networkPlayer.PlayerID = newPlayerId;                                        
 
-                                            // Initial position data for the newly connected player
-                                            networkPlayer.Position = new Vector3(157f, -1649f, 30f);
-                                            networkPlayer.Rotation = new Vector3(0f, 0f, 0f);
-                                            networkPlayer.AimLocation = new Vector3(0f, 0f, 0f);
+                                        // Initial position data for the newly connected player
+                                        networkPlayer.Position = new Vector3(157f, -1649f, 30f);
+                                        networkPlayer.Rotation = new Vector3(0f, 0f, 0f);
+                                        networkPlayer.AimLocation = new Vector3(0f, 0f, 0f);
 
-                                            // Safe for network interaction
-                                            networkPlayer.SafeForNet = true;
+                                        // Safe for network interaction
+                                        networkPlayer.SafeForNet = true;
 
-                                            // Send the packet to the player
-                                            SendInitializationPacket(networkPlayer.NetConnection, networkPlayer.PlayerID, networkPlayer.Position, networkPlayer.SafeForNet);
-                                            FlushSendQueue();
+                                        // Send the packet to the player
+                                        SendInitializationPacket(networkPlayer.NetConnection, networkPlayer.PlayerID, networkPlayer.Position, networkPlayer.SafeForNet);
+                                        FlushSendQueue();
 
-                                            Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);                                    
+                                        Form.Output("Allocated PlayerID " + newPlayerId + ", for: " + networkPlayer.NetConnection.RemoteUniqueIdentifier);                                    
 
-                                            string[] fileArray = files.Split(',');
-                                            Form.Output("File count: " + fileArray.Length);
+                                        string[] fileArray = files.Split(',');
+                                        Form.Output("File count: " + fileArray.Length);
 
-                                            API.Lua.DoString("filesTable = {}");
+                                        API.Lua.DoString("filesTable = {}");
 
-                                            foreach(string file in fileArray) {
-                                                API.Lua.DoString("table.insert(filesTable, \"" + file + "\")");
-                                            }
+                                        foreach(string file in fileArray) {
+                                            API.Lua.DoString("table.insert(filesTable, \"" + file + "\")");
+                                        }
                                             
-                                            LuaTable tab = API.Lua.GetTable("filesTable");
-                                            API.Fire(API.Callback.OnPlayerConnect, newPlayerId, tab);
-                                        }
-                                        else {
-                                            Form.Output("Could not allocate player id");
-                                        }
+                                        LuaTable tab = API.Lua.GetTable("filesTable");
+                                        API.Fire(API.Callback.OnPlayerConnect, newPlayerId, tab);
                                     }
                                     else {
                                         Form.Output("Could not find an available player id");
@@ -438,30 +433,6 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.AimLocation.Z);
                         outgoingMessage.Write(netPlayer.Shooting);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
-
-                        /*if(netPlayer.NetVehicle != null) {
-                            outgoingMessage = CreateMessage();
-                            outgoingMessage.Write((byte)PacketType.Vehicle);
-                            outgoingMessage.Write(netPlayer.PlayerID);
-                            outgoingMessage.Write(netPlayer.NetVehicle.Hash);
-                            outgoingMessage.Write(netPlayer.NetVehicle.PosX);
-                            outgoingMessage.Write(netPlayer.NetVehicle.PosY);
-                            outgoingMessage.Write(netPlayer.NetVehicle.PosZ);
-                            outgoingMessage.Write(netPlayer.NetVehicle.RotW);
-                            outgoingMessage.Write(netPlayer.NetVehicle.RotX);
-                            outgoingMessage.Write(netPlayer.NetVehicle.RotY);
-                            outgoingMessage.Write(netPlayer.NetVehicle.RotZ);
-                            outgoingMessage.Write(netPlayer.NetVehicle.PrimaryColor);
-                            outgoingMessage.Write(netPlayer.NetVehicle.SecondaryColor);
-                            outgoingMessage.Write(netPlayer.NetVehicle.Speed);
-                            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
-                        }
-                        else {
-                            outgoingMessage = CreateMessage();
-                            outgoingMessage.Write((byte)PacketType.NoVehicle);
-                            outgoingMessage.Write(netPlayer.PlayerID);
-                            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
-                        }*/
                     }
                 }
                 
@@ -518,35 +489,21 @@ namespace Stroopwaffle_Server {
         private int FindAvailablePlayerID() {
             for(int index = 0; index < PlayerIDs.Length; index++) {
                 if(!PlayerIDs[index]) {
+                    PlayerIDs[index] = true;
                     return index;
                 }
             }
             return -1;
-        }
-        
-        private bool AllocatePlayerID(int playerId) {
-            if(!PlayerIDs[playerId]) {
-                PlayerIDs[playerId] = true;
-                return true;
-            }
-            return false;
         }
 
         private int FindAvailableVehicleID() {
             for (int index = 0; index < VehicleIDs.Length; index++) {
                 if (!VehicleIDs[index]) {
+                    VehicleIDs[index] = true;
                     return index;
                 }
             }
             return -1;
-        }
-
-        private bool AllocateVehicleID(int vehicleId) {
-            if (!VehicleIDs[vehicleId]) {
-                VehicleIDs[vehicleId] = true;
-                return true;
-            }
-            return false;
         }
 
         public void RegisterVehicle(NetworkVehicle networkVehicle) {

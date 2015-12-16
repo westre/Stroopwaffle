@@ -34,6 +34,8 @@ namespace Stroopwaffle_Server {
             Lua.RegisterFunction("broadcastMessage", this, typeof(API).GetMethod("API_broadcastMessage"));
             Lua.RegisterFunction("broadcastPlayerMessage", this, typeof(API).GetMethod("API_broadcastPlayerMessage"));
             Lua.RegisterFunction("createVehicle", this, typeof(API).GetMethod("API_createVehicle"));
+            Lua.RegisterFunction("getPosition", this, typeof(API).GetMethod("API_getPosition"));
+            Lua.RegisterFunction("getRotation", this, typeof(API).GetMethod("API_getRotation"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -81,6 +83,25 @@ namespace Stroopwaffle_Server {
             networkVehicle.RotW = rotW;
 
             Server.RegisterVehicle(networkVehicle);
+        }
+
+        public LuaTable API_getPosition(int playerId) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+            if(networkPlayer != null) {
+                Server.Form.Output("X: " + networkPlayer.Position.X + ", Y: " + networkPlayer.Position.Y + ", Z: " + networkPlayer.Position.Z);
+            }
+
+            Lua.DoString("tempTable = {}");
+            Lua.DoString("table.insert(tempTable, \"" + networkPlayer.Position.X + "\")");
+            Lua.DoString("table.insert(tempTable, \"" + networkPlayer.Position.Y + "\")");
+            Lua.DoString("table.insert(tempTable, \"" + networkPlayer.Position.Z + "\")");
+            LuaTable tab = Lua.GetTable("tempTable");
+
+            return tab;
+        }
+
+        public void API_getRotation(int playerId) {
+
         }
     }
 }

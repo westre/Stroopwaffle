@@ -41,6 +41,9 @@ namespace Stroopwaffle {
         }
 
         public NetConnection Connect() {
+            ServerPlayers.Clear();
+            Vehicles.Clear();
+
             NetOutgoingMessage hail = NetClient.CreateMessage("This is the hail message");
             return NetClient.Connect("127.0.0.1", 80, hail);
         }
@@ -390,9 +393,6 @@ namespace Stroopwaffle {
                                 driver.NetVehicle = networkVehicle;
                                 Main.ChatBox.Add("(internal) Set driver ped");
                             }
-                            else {
-                                Main.ChatBox.Add("(internal error) driver is null");
-                            }
                         }
 
                         // Force reset position
@@ -401,6 +401,12 @@ namespace Stroopwaffle {
                             netVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ);
                         }
                         */
+
+                        // No driver, so just force the physical vehicle's position to the actual position in order to prevent desync between physical and virtual data
+                        if(networkVehicle.PlayerID == -1) {
+                            networkVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ);
+                            networkVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+                        }
 
                         networkVehicle.ID = id;
                         networkVehicle.PlayerID = playerId;

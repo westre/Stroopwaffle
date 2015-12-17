@@ -6,6 +6,8 @@ using GTA.Native;
 using GTA.Math;
 using Stroopwaffle;
 using Lidgren.Network;
+using Stroopwaffle_Shared;
+using System.Collections.Generic;
 
 /*
     http://www.dev-c.com/nativedb/
@@ -61,6 +63,14 @@ public class Main : Script {
         Game.Player.IgnoredByEveryone = true;
         Game.Player.IgnoredByPolice = true;
 
+        List<NetworkVehicle> safeList = new List<NetworkVehicle>(NetworkClient.Vehicles);
+        foreach(NetworkVehicle networkVehicle in safeList) {
+            Point labelPosition = UI.WorldToScreen(networkVehicle.PhysicalVehicle.Position + new Vector3(0, 0, 0.5f));
+
+            UIElement text = new UIText("ID " + networkVehicle.ID + "\nPID: " + networkVehicle.PlayerID, labelPosition, 0.3f, Color.BlueViolet);
+            text.Draw();
+        }
+
         // GUI
         ChatBox.Draw();
         StatisticsUI.Draw();
@@ -78,6 +88,9 @@ public class Main : Script {
         Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 44, 1); // Disable cover
         Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 171, 1); // Disable INPUT_SPECIAL_ABILITY_PC
         Function.Call(Hash.SET_MAX_WANTED_LEVEL, 0);
+        Function.Call(Hash.SET_GARBAGE_TRUCKS, 0);
+        Function.Call(Hash.SET_RANDOM_BOATS, 0);
+        Function.Call(Hash.SET_RANDOM_TRAINS, 0);
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e) {

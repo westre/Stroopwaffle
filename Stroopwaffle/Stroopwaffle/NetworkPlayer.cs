@@ -23,6 +23,10 @@ namespace Stroopwaffle {
 
         public NetworkVehicle NetVehicle { get; set; }
 
+        public bool Walking { get; set; }
+        public bool Running { get; set; }
+        public bool Sprinting { get; set; }
+
         public NetworkPlayer() {
             
         }

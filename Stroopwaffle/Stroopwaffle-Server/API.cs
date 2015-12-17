@@ -71,7 +71,7 @@ namespace Stroopwaffle_Server {
             }          
         }
 
-        public void API_createVehicle(int vehicleHash, int posX, int posY, int posZ, int rotX, int rotY, int rotZ, int rotW) {
+        public void API_createVehicle(int vehicleHash, int posX, int posY, int posZ, int rotX, int rotY, int rotZ) {
             NetworkVehicle networkVehicle = new NetworkVehicle();
             networkVehicle.Hash = vehicleHash;
             networkVehicle.PosX = posX;
@@ -80,7 +80,7 @@ namespace Stroopwaffle_Server {
             networkVehicle.RotX = rotX;
             networkVehicle.RotY = rotY;
             networkVehicle.RotZ = rotZ;
-            networkVehicle.RotW = rotW;
+            networkVehicle.RotW = 0;
 
             Server.RegisterVehicle(networkVehicle);
         }

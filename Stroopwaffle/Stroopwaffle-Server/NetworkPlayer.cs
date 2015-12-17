@@ -16,8 +16,12 @@ namespace Stroopwaffle_Server {
         public int Aiming { get; set; }
         public Vector3 AimLocation { get; set; }
         public int Shooting { get; set; }
+        public bool Walking { get; set; }
+        public bool Running { get; set; }
+        public bool Sprinting { get; set; }
 
         public NetworkVehicle NetVehicle { get; set; }
+        
 
         public NetworkPlayer(NetConnection netConnection) {
             NetConnection = netConnection;

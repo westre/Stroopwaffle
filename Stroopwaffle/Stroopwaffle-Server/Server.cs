@@ -221,9 +221,15 @@ namespace Stroopwaffle_Server {
                                     float x = netIncomingMessage.ReadFloat();
                                     float y = netIncomingMessage.ReadFloat();
                                     float z = netIncomingMessage.ReadFloat();
+                                    bool walking = netIncomingMessage.ReadBoolean();
+                                    bool running = netIncomingMessage.ReadBoolean();
+                                    bool sprinting = netIncomingMessage.ReadBoolean();
 
                                     if (networkPlayer.PlayerID == playerId) {
                                         networkPlayer.Position = new Vector3(x, y, z);
+                                        networkPlayer.Walking = walking;
+                                        networkPlayer.Running = running;
+                                        networkPlayer.Sprinting = sprinting;
                                         //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
                                     }
                                     else {
@@ -432,6 +438,9 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.AimLocation.Y);
                         outgoingMessage.Write(netPlayer.AimLocation.Z);
                         outgoingMessage.Write(netPlayer.Shooting);
+                        outgoingMessage.Write(netPlayer.Walking);
+                        outgoingMessage.Write(netPlayer.Running);
+                        outgoingMessage.Write(netPlayer.Sprinting);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                     }
                 }

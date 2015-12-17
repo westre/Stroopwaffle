@@ -134,6 +134,9 @@ namespace Stroopwaffle {
             outgoingMessage.Write(Game.Player.Character.Position.X + 3.0f);
             outgoingMessage.Write(Game.Player.Character.Position.Y);
             outgoingMessage.Write(World.GetGroundHeight(Game.Player.Character.Position));
+            outgoingMessage.Write(Game.Player.Character.IsWalking);
+            outgoingMessage.Write(Game.Player.Character.IsRunning);
+            outgoingMessage.Write(Game.Player.Character.IsSprinting);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
         }
 
@@ -273,6 +276,9 @@ namespace Stroopwaffle {
                         float aimPosY = netIncomingMessage.ReadFloat();
                         float aimPosZ = netIncomingMessage.ReadFloat();
                         int shooting = netIncomingMessage.ReadInt32();
+                        bool walking = netIncomingMessage.ReadBoolean();
+                        bool running = netIncomingMessage.ReadBoolean();
+                        bool sprinting = netIncomingMessage.ReadBoolean();
 
                         // Check to see if this player is already in our list
                         NetworkPlayer networkPlayer = null;
@@ -289,45 +295,61 @@ namespace Stroopwaffle {
                         Point namePlate = UI.WorldToScreen(networkPlayer.Ped.Position + new Vector3(0, 0, 1.3f));
                         Main.NametagUI.SetNametagForPlayer(new Nametag { NetworkPlayer = networkPlayer, Point = namePlate });
 
+                        // For task animation
+                        bool walkToRunTransition = false;
+                        if(!walking && networkPlayer.Walking && running) {
+                            walkToRunTransition = true;
+                        }
+
                         networkPlayer.Aiming = aiming;
-                        networkPlayer.AimPosition = new Vector3(aimPosX, aimPosY, aimPosZ);
-                        
+                        networkPlayer.AimPosition = new Vector3(aimPosX, aimPosY, aimPosZ);             
                         networkPlayer.Shooting = shooting;
+                        networkPlayer.Walking = walking;
+                        networkPlayer.Running = running;
+                        networkPlayer.Sprinting = sprinting;
 
                         // Update the player if he's not in a vehicle
-                        if(networkPlayer.NetVehicle == null) {
-                            if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && (Switch % 15 == 0)) {
-                                if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
-                                    Function.Call(Hash.TASK_GO_TO_COORD_WHILE_AIMING_AT_COORD, networkPlayer.Ped.Handle, networkPlayer.Position.X, networkPlayer.Position.Y, networkPlayer.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 2f, 0, 0x3F000000, 0x40800000, 1, 512, 0, (uint)FiringPattern.FullAuto);
-                                    BlockAimAtTask = true;
-                                }
-                            }
-                            else if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && !BlockAimAtTask) {
-                                networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 200);
-                            }
-
+                        if (networkPlayer.NetVehicle == null) {
                             if (networkPlayer.Shooting == 1) {
                                 //Function.Call(Hash.SHOOT_SINGLE_BULLET_BETWEEN_COORDS, networkPlayer.Ped.Position.X, networkPlayer.Ped.Position.Y, networkPlayer.Ped.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 50, true, 0x1B06D571, networkPlayer.Ped, true, false, 100);
 
                                 networkPlayer.Ped.ShootRate = 100000;
-                                networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 325);
-
+                                networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 355);
+                                
                                 BlockAimAtTask = true;
                             }
 
+                            if (networkPlayer.Aiming == 1 && networkPlayer.Shooting == 0 && !BlockAimAtTask) {
+                                //Function.Call(Hash.TASK_GO_TO_COORD_WHILE_AIMING_AT_COORD, networkPlayer.Ped.Handle, networkPlayer.Position.X, networkPlayer.Position.Y, networkPlayer.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 2f, 0, 0x3F000000, 0x40800000, 1, 512, 0, (uint)FiringPattern.FullAuto);
+                                networkPlayer.Ped.Task.AimAt(networkPlayer.AimPosition, 200);
+                            }                 
+
                             if (networkPlayer.Aiming == 0 && networkPlayer.Shooting == 0) {
-                                if (posX != networkPlayer.Position.X || posY != networkPlayer.Position.Y || posZ != networkPlayer.Position.Z) {
-                                    networkPlayer.Ped.Task.RunTo(networkPlayer.Position, true, 500);
+                                Vector3 pos = Game.Player.Character.Position;
+                                Vector3 rot = Game.Player.Character.Rotation;
+                                Vector3 dir = Utility.RotationToDirection(rot);
+                                Vector3 runTo = pos + dir * 1000f;
+
+                                if(walkToRunTransition) {
+                                    // This is really ugly, animation-wise, TODO check if Task.RunTo changes walk/run animation depending on the distance
+                                    networkPlayer.Ped.Task.ClearAllImmediately();
+                                    networkPlayer.Ped.Task.RunTo(runTo, true, 10);
+                                }
+                                else if((networkPlayer.Running || networkPlayer.Sprinting) && !networkPlayer.Walking) {
+                                    networkPlayer.Ped.Task.RunTo(runTo, true, 10);
+                                }
+                                else if(networkPlayer.Walking) {
+                                    networkPlayer.Ped.Task.GoTo(runTo, true, 10);
+                                }
+                                else {
+                                    networkPlayer.Ped.Task.ClearAll();
+                                    networkPlayer.Ped.Rotation = new Vector3(rotX, rotY, rotZ);
                                 }
                             }
                         }
 
+                        networkPlayer.Ped.Position = new Vector3(posX, posY, posZ);
                         networkPlayer.Position = new Vector3(posX, posY, posZ);
-
-                        // Force reset position if we are too desyncy
-                        if (!networkPlayer.Ped.IsInRangeOf(networkPlayer.Position, 15f)) {
-                            networkPlayer.Ped.Position = networkPlayer.Position;
-                        }
 
                         if (BlockAimAtTask) {
                             BlockAimAtTimer++;
@@ -339,10 +361,8 @@ namespace Stroopwaffle {
                         Switch++;
                     }
                     else if(receivedPacket == PacketType.TotalVehicleData) {
-                        if(GetLocalPlayer() == null) {
-                            return;
-                        }
-                        
+                        if (GetLocalPlayer() == null) return;
+
                         int id = netIncomingMessage.ReadInt32();
                         int playerId = netIncomingMessage.ReadInt32();
                         int vehicleHash = netIncomingMessage.ReadInt32();
@@ -364,7 +384,7 @@ namespace Stroopwaffle {
                             networkVehicle = new NetworkVehicle();
 
                             // Client side only!
-                            networkVehicle.PhysicalVehicle = World.CreateVehicle(VehicleHash.Adder, new Vector3(posX, posY, posZ));
+                            networkVehicle.PhysicalVehicle = World.CreateVehicle(vehicleHash, new Vector3(posX, posY, posZ));
                             networkVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
                             networkVehicle.PhysicalVehicle.CanTiresBurst = false;
                             networkVehicle.PhysicalVehicle.PlaceOnGround();

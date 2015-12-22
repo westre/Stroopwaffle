@@ -31,13 +31,13 @@ public class Main : Script {
     public NetworkClient NetworkClient { get; set; }
     public Chatbox ChatBox { get; set; }
     public StatisticsUI StatisticsUI { get; set; }
-    public NametagUI NametagUI { get; set; }
+
+    public static bool CloneSync { get; set; } = true; 
 
     public Main() {
         NetworkClient = new NetworkClient(this);
         ChatBox = new Chatbox(this);
         StatisticsUI = new StatisticsUI();
-        NametagUI = new NametagUI(this);
 
         // Register events
         this.Tick += OnTick;
@@ -63,18 +63,25 @@ public class Main : Script {
         Game.Player.IgnoredByEveryone = true;
         Game.Player.IgnoredByPolice = true;
 
-        List<NetworkVehicle> safeList = new List<NetworkVehicle>(NetworkClient.Vehicles);
-        foreach(NetworkVehicle networkVehicle in safeList) {
+        List<NetworkVehicle> safeVehicleList = new List<NetworkVehicle>(NetworkClient.Vehicles);
+        foreach(NetworkVehicle networkVehicle in safeVehicleList) {
             Point labelPosition = UI.WorldToScreen(networkVehicle.PhysicalVehicle.Position + new Vector3(0, 0, 0.5f));
 
             UIElement text = new UIText("ID " + networkVehicle.ID + "\nPID: " + networkVehicle.PlayerID, labelPosition, 0.3f, Color.BlueViolet);
             text.Draw();
         }
 
+        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
+        foreach (NetworkPlayer networkPlayer in safePlayerList) {
+            Point labelPosition = UI.WorldToScreen(networkPlayer.Position + new Vector3(0, 0, 1.5f));
+
+            UIElement text = new UIText("ID " + networkPlayer.PlayerID, labelPosition, 0.2f, Color.Green);
+            text.Draw();
+        }
+
         // GUI
         ChatBox.Draw();
         StatisticsUI.Draw();
-        NametagUI.Draw();
 
         ChatBox.ScaleForm.Render2D();
         ChatBox.Tick();
@@ -102,7 +109,22 @@ public class Main : Script {
             if(NetworkClient.NetClient.ServerConnection == null) {
                 ChatBox.Add("Connecting to server...");
 
-                NetConnection connection = NetworkClient.Connect();
+                NetConnection connection = NetworkClient.Connect("127.0.0.1");
+                if (connection != null) {
+                    ChatBox.Add("Connected");
+                    InitializeGame();
+                }
+            }
+            else {
+                NetworkClient.Disconnect();
+                ChatBox.Add("Disconnected from server.");
+            }
+        }
+        if (e.KeyCode == Keys.NumPad1) {
+            if (NetworkClient.NetClient.ServerConnection == null) {
+                ChatBox.Add("Connecting to external server...");
+
+                NetConnection connection = NetworkClient.Connect("192.168.1.133");
                 if (connection != null) {
                     ChatBox.Add("Connected");
                     InitializeGame();

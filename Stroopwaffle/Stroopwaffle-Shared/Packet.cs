@@ -15,6 +15,8 @@ namespace Stroopwaffle_Shared {
         Deinitialization,
         ChatMessage,
         NoVehicle,
-        TotalVehicleData
+        TotalVehicleData,
+        CurrentWeapon,
+        CurrentModel
     }
 }

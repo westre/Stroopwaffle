@@ -52,7 +52,6 @@
   <ItemGroup>
     <Compile Include="Chatbox.cs" />
     <Compile Include="Main.cs" />
-    <Compile Include="NametagUI.cs" />
     <Compile Include="NetworkPlayer.cs" />
     <Compile Include="NetworkClient.cs" />
     <Compile Include="StatisticsUI.cs" />

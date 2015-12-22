@@ -187,6 +187,7 @@ namespace Stroopwaffle_Server {
                                         networkPlayer.Position = new Vector3(157f, -1649f, 30f);
                                         networkPlayer.Rotation = new Vector3(0f, 0f, 0f);
                                         networkPlayer.AimLocation = new Vector3(0f, 0f, 0f);
+                                        networkPlayer.RunTo = new Vector3(0f, 0f, 0f);
 
                                         // Safe for network interaction
                                         networkPlayer.SafeForNet = true;
@@ -224,12 +225,18 @@ namespace Stroopwaffle_Server {
                                     bool walking = netIncomingMessage.ReadBoolean();
                                     bool running = netIncomingMessage.ReadBoolean();
                                     bool sprinting = netIncomingMessage.ReadBoolean();
+                                    float runToX = netIncomingMessage.ReadFloat();
+                                    float runToY = netIncomingMessage.ReadFloat();
+                                    float runToZ = netIncomingMessage.ReadFloat();
+                                    bool jumping = netIncomingMessage.ReadBoolean();
 
                                     if (networkPlayer.PlayerID == playerId) {
                                         networkPlayer.Position = new Vector3(x, y, z);
                                         networkPlayer.Walking = walking;
                                         networkPlayer.Running = running;
                                         networkPlayer.Sprinting = sprinting;
+                                        networkPlayer.RunTo = new Vector3(runToX, runToY, runToZ);
+                                        networkPlayer.Jumping = jumping;
                                         //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
                                     }
                                     else {
@@ -303,6 +310,26 @@ namespace Stroopwaffle_Server {
                                         networkPlayer.NetVehicle = null;
                                     }
                              
+                                    break;
+
+                                case PacketType.CurrentWeapon:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    int weaponHash = netIncomingMessage.ReadInt32();
+
+                                    networkPlayer.CurrentWeapon = weaponHash;
+
+                                    break;
+
+                                case PacketType.CurrentModel:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+
+                                    playerId = netIncomingMessage.ReadInt32();
+                                    int modelHash = netIncomingMessage.ReadInt32();
+
+                                    networkPlayer.Model = modelHash;
+
                                     break;
 
                                 case PacketType.TotalVehicleData:
@@ -441,6 +468,12 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.Walking);
                         outgoingMessage.Write(netPlayer.Running);
                         outgoingMessage.Write(netPlayer.Sprinting);
+                        outgoingMessage.Write(netPlayer.RunTo.X);
+                        outgoingMessage.Write(netPlayer.RunTo.Y);
+                        outgoingMessage.Write(netPlayer.RunTo.Z);
+                        outgoingMessage.Write(netPlayer.CurrentWeapon);
+                        outgoingMessage.Write(netPlayer.Jumping);
+                        outgoingMessage.Write(netPlayer.Model);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                     }
                 }

@@ -20,7 +20,10 @@ namespace Stroopwaffle_Server {
             OnScriptExit,
             OnPlayerConnect,
             OnPlayerDisconnect,
-            OnPlayerChat
+            OnPlayerChat,
+            OnPlayerInitialize,
+            OnPlayerDied,
+            OnPlayerRespawn,
         }
 
         public API(Server server) {
@@ -31,11 +34,21 @@ namespace Stroopwaffle_Server {
         }
 
         private void RegisterAllFunctions() {
-            Lua.RegisterFunction("broadcastMessage", this, typeof(API).GetMethod("API_broadcastMessage"));
+            Lua.RegisterFunction("broadcastMessage", this, typeof(API).GetMethod("API_broadcastMessage")); 
             Lua.RegisterFunction("broadcastPlayerMessage", this, typeof(API).GetMethod("API_broadcastPlayerMessage"));
+
             Lua.RegisterFunction("createVehicle", this, typeof(API).GetMethod("API_createVehicle"));
+            Lua.RegisterFunction("destroyVehicle", this, typeof(API).GetMethod("API_destroyVehicle"));
+
             Lua.RegisterFunction("getPosition", this, typeof(API).GetMethod("API_getPosition"));
             Lua.RegisterFunction("getRotation", this, typeof(API).GetMethod("API_getRotation"));
+
+            Lua.RegisterFunction("setPlayerPosition", this, typeof(API).GetMethod("API_setPlayerPosition"));
+            Lua.RegisterFunction("setPlayerVisible", this, typeof(API).GetMethod("API_setPlayerVisible"));
+            Lua.RegisterFunction("freezePlayer", this, typeof(API).GetMethod("API_freezePlayer"));
+            Lua.RegisterFunction("setPlayerHealth", this, typeof(API).GetMethod("API_setPlayerHealth"));
+            Lua.RegisterFunction("setPlayerArmor", this, typeof(API).GetMethod("API_setPlayerArmor"));
+            Lua.RegisterFunction("givePlayerWeapon", this, typeof(API).GetMethod("API_givePlayerWeapon"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -81,8 +94,22 @@ namespace Stroopwaffle_Server {
             networkVehicle.RotY = rotY;
             networkVehicle.RotZ = rotZ;
             networkVehicle.RotW = 0;
+            networkVehicle.PrimaryColor = 0;
+            networkVehicle.SecondaryColor = 0;
 
             Server.RegisterVehicle(networkVehicle);
+        }
+
+        public void API_destroyVehicle(int vehicleId) {
+            NetworkVehicle networkVehicle = NetworkVehicle.Exists(Server.Vehicles, vehicleId);
+
+            if(networkVehicle != null) {
+                Server.Vehicles.Remove(networkVehicle);
+                Server.Form.Output("NetworkVehicle " + vehicleId + " removed");
+            }
+            else {
+                Server.Form.Output("VehicleId " + vehicleId + " is null");
+            }
         }
 
         public LuaTable API_getPosition(int playerId) {
@@ -102,6 +129,57 @@ namespace Stroopwaffle_Server {
 
         public void API_getRotation(int playerId) {
 
+        }
+
+        public void API_setPlayerPosition(int playerId, float posX, float posY, float posZ) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+            NetConnection netConnection = Server.Find(playerId);
+
+            if (networkPlayer != null) {
+                networkPlayer.Position = new Vector3(posX, posY, posZ);
+                Server.SendSetPlayerPositionPacket(netConnection, networkPlayer.PlayerID, networkPlayer.Position);
+            }
+        }
+
+        public void API_setPlayerVisible(int playerId, bool visibility) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+            if (networkPlayer != null) {
+                networkPlayer.Visible = visibility;
+            }
+        }
+
+        public void API_freezePlayer(int playerId, bool freeze) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+            if (networkPlayer != null) {
+                networkPlayer.Frozen = freeze;
+            }
+        }
+
+        public void API_setPlayerHealth(int playerId, int health) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+
+            if (networkPlayer != null) {
+                networkPlayer.Health = health;
+                Server.SendSetPlayerHealthPacket(networkPlayer.PlayerID, networkPlayer.Health);
+            }
+        }
+
+        public void API_setPlayerArmor(int playerId, int armor) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+
+            if (networkPlayer != null) {
+                networkPlayer.Armor = armor;
+                Server.SendSetPlayerArmorPacket(networkPlayer.PlayerID, networkPlayer.Armor);
+            }
+        }
+
+        public void API_givePlayerWeapon(int playerId, int weaponId) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+
+            if (networkPlayer != null) {
+                networkPlayer.Weapons.Add(weaponId);
+                Server.SendGivePlayerWeaponPacket(networkPlayer.PlayerID, weaponId);
+            }
         }
     }
 }

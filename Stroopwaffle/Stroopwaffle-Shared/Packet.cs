@@ -17,6 +17,11 @@ namespace Stroopwaffle_Shared {
         NoVehicle,
         TotalVehicleData,
         CurrentWeapon,
-        CurrentModel
+        CurrentModel,
+        SetPedPosition,
+        SetPlayerArmor,
+        SetPlayerHealth,
+        NewPed,
+        GivePlayerWeapon
     }
 }

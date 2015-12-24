@@ -209,6 +209,8 @@ namespace Stroopwaffle_Server {
                                             
                                         LuaTable tab = API.Lua.GetTable("filesTable");
                                         API.Fire(API.Callback.OnPlayerConnect, newPlayerId, tab);
+
+                                        API.Fire(API.Callback.OnPlayerInitialize, newPlayerId);
                                     }
                                     else {
                                         Form.Output("Could not find an available player id");
@@ -229,14 +231,37 @@ namespace Stroopwaffle_Server {
                                     float runToY = netIncomingMessage.ReadFloat();
                                     float runToZ = netIncomingMessage.ReadFloat();
                                     bool jumping = netIncomingMessage.ReadBoolean();
+                                    bool ragdoll = netIncomingMessage.ReadBoolean();
+                                    bool reloading = netIncomingMessage.ReadBoolean();
+                                    int health = netIncomingMessage.ReadInt32();
+                                    int maxHealth = netIncomingMessage.ReadInt32();
+                                    int armor = netIncomingMessage.ReadInt32();
+                                    bool dead = netIncomingMessage.ReadBoolean();
 
                                     if (networkPlayer.PlayerID == playerId) {
+                                        // We just died
+                                        if (dead && !networkPlayer.Dead) {
+                                            API.Fire(API.Callback.OnPlayerDied, playerId);
+                                        }
+                                        // We have been respawned!
+                                        else if (!dead && networkPlayer.Dead) {
+                                            SendRevivePedPacket(playerId);
+                                            API.Fire(API.Callback.OnPlayerRespawn, playerId);
+                                        }
+
+                                        // Update values
                                         networkPlayer.Position = new Vector3(x, y, z);
                                         networkPlayer.Walking = walking;
                                         networkPlayer.Running = running;
                                         networkPlayer.Sprinting = sprinting;
                                         networkPlayer.RunTo = new Vector3(runToX, runToY, runToZ);
                                         networkPlayer.Jumping = jumping;
+                                        networkPlayer.Ragdoll = ragdoll;
+                                        networkPlayer.Reloading = reloading;
+                                        networkPlayer.Health = health;
+                                        networkPlayer.MaxHealth = maxHealth;
+                                        networkPlayer.Armor = armor;
+                                        networkPlayer.Dead = dead;
                                         //Form.Output("Updated Position for ID: "+ playerId + " - " + networkPlayer.Position.ToString());
                                     }
                                     else {
@@ -397,6 +422,16 @@ namespace Stroopwaffle_Server {
             }
         }
 
+        internal void SendGivePlayerWeaponPacket(int playerId, int weaponId) {
+            if (GetAllConnections().Count == 0) return;
+
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.GivePlayerWeapon);
+            outgoingMessage.Write(playerId);
+            outgoingMessage.Write(weaponId);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+        }
+
         public void SendNoVehiclePacket(NetworkPlayer source) {
             if (GetAllConnections().Count == 0) return;
 
@@ -427,6 +462,45 @@ namespace Stroopwaffle_Server {
             Form.Output("SendBroadcastMessagePacket (client): " + message);
         }
 
+        public void SendSetPlayerPositionPacket(NetConnection netConnection, int playerId, Vector3 position) {
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.SetPedPosition);
+            outgoingMessage.Write(playerId);
+            outgoingMessage.Write(position.X);
+            outgoingMessage.Write(position.Y);
+            outgoingMessage.Write(position.Z);
+            SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.ReliableOrdered);
+        }
+
+        public void SendSetPlayerArmorPacket(int playerId, int armor) {
+            if (GetAllConnections().Count == 0) return;
+
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.SetPlayerArmor);
+            outgoingMessage.Write(playerId);
+            outgoingMessage.Write(armor);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+        }
+
+        public void SendSetPlayerHealthPacket(int playerId, int health) {
+            if (GetAllConnections().Count == 0) return;
+
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.SetPlayerHealth);
+            outgoingMessage.Write(playerId);
+            outgoingMessage.Write(health);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+        }
+
+        public void SendRevivePedPacket(int playerId) {
+            if (GetAllConnections().Count == 0) return;
+
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.NewPed);
+            outgoingMessage.Write(playerId);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+        }
+
         private void SendDeinitializationPacket(int playerID) {
             if (GetAllConnections().Count == 0) return;
 
@@ -449,7 +523,8 @@ namespace Stroopwaffle_Server {
 
         private void SendUpdate() {
             if (Players.Count > 0) {
-                foreach (NetworkPlayer netPlayer in Players) {
+                List<NetworkPlayer> safeNetworkPlayerList = new List<NetworkPlayer>(Players);
+                foreach (NetworkPlayer netPlayer in safeNetworkPlayerList) {
                     if(netPlayer.SafeForNet) {
                         NetOutgoingMessage outgoingMessage = CreateMessage();
                         outgoingMessage.Write((byte)PacketType.TotalPlayerData);
@@ -474,11 +549,20 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.CurrentWeapon);
                         outgoingMessage.Write(netPlayer.Jumping);
                         outgoingMessage.Write(netPlayer.Model);
+                        outgoingMessage.Write(netPlayer.Visible);
+                        outgoingMessage.Write(netPlayer.Frozen);
+                        outgoingMessage.Write(netPlayer.Ragdoll);
+                        outgoingMessage.Write(netPlayer.Reloading);
+                        outgoingMessage.Write(netPlayer.Health);
+                        outgoingMessage.Write(netPlayer.MaxHealth);
+                        outgoingMessage.Write(netPlayer.Armor);
+                        outgoingMessage.Write(netPlayer.Dead);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                     }
                 }
-                
-                foreach(NetworkVehicle networkVehicle in Vehicles) {
+
+                List<NetworkVehicle> safeNetworkVehicleList = new List<NetworkVehicle>(Vehicles);
+                foreach(NetworkVehicle networkVehicle in safeNetworkVehicleList) {
                     NetOutgoingMessage outgoingMessage = CreateMessage();
                     outgoingMessage = CreateMessage();
                     outgoingMessage.Write((byte)PacketType.TotalVehicleData);

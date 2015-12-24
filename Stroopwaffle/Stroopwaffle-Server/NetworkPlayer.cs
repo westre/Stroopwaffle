@@ -25,6 +25,15 @@ namespace Stroopwaffle_Server {
         public NetworkVehicle NetVehicle { get; set; }
         public bool Jumping { get; set; }
         public int Model { get; set; }
+        public bool Visible { get; set; }
+        public bool Frozen { get; internal set; }
+        public bool Ragdoll { get; internal set; }
+        public bool Reloading { get; internal set; }
+        public int Health { get; internal set; }
+        public int MaxHealth { get; internal set; }
+        public int Armor { get; internal set; }
+        public bool Dead { get; internal set; }
+        public List<int> Weapons { get; set; } = new List<int>();
 
         public NetworkPlayer(NetConnection netConnection) {
             NetConnection = netConnection;

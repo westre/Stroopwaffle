@@ -31,6 +31,13 @@ namespace Stroopwaffle {
         public int CurrentWeapon { get; set; }
         public bool Jumping { get; set; }
         public int Model { get; set; }
+        public bool Ragdoll { get; internal set; }
+        public bool Reloading { get; internal set; }
+        public int Health { get; internal set; }
+        public int MaxHealth { get; internal set; }
+        public int Armor { get; internal set; }
+        public bool Dead { get; internal set; }
+        public List<int> Weapons { get; set; } = new List<int>();
 
         public NetworkPlayer() {
             
@@ -42,14 +49,17 @@ namespace Stroopwaffle {
 
             // DEBUG, not sure how this should be sorted out, reminder clone testing!
             Ped.RelationshipGroup = Game.Player.Character.RelationshipGroup;
-            Ped.BlockPermanentEvents = true;
-            Ped.CanRagdoll = false;
+            Ped.BlockPermanentEvents = true; 
+            Ped.CanRagdoll = true;
             Ped.IsInvincible = true;
+
             Ped.AddBlip();
             Ped.CurrentBlip.Color = BlipColor.White;
             Ped.CurrentBlip.Scale = 0.8f;
             Function.Call(Hash.SET_ENTITY_AS_MISSION_ENTITY, Ped, true, true); // More control for us, less control for Rockstar
             Ped.RelationshipGroup = WorldRelationship;
+
+            Ped.HasCollision = true;
         }
 
         public static NetworkPlayer Get(List<NetworkPlayer> players, int id) {

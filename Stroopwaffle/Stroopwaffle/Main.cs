@@ -73,9 +73,9 @@ public class Main : Script {
 
         List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
         foreach (NetworkPlayer networkPlayer in safePlayerList) {
-            Point labelPosition = UI.WorldToScreen(networkPlayer.Position + new Vector3(0, 0, 1.5f));
+            Point labelPosition = UI.WorldToScreen(networkPlayer.Position + new Vector3(0, 0, 2.5f));
 
-            UIElement text = new UIText("ID " + networkPlayer.PlayerID, labelPosition, 0.2f, Color.Green);
+            UIElement text = new UIText("ID " + networkPlayer.PlayerID + "\n" + networkPlayer.Health + "/" + networkPlayer.MaxHealth + " (" + networkPlayer.Armor + ")", labelPosition, 0.3f, Color.Green);
             text.Draw();
         }
 

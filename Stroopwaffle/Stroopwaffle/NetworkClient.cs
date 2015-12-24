@@ -169,10 +169,13 @@ namespace Stroopwaffle {
             if (!Main.CloneSync)
                 outgoingMessage.Write(Game.Player.Character.Position.X);
             else
-                outgoingMessage.Write(Game.Player.Character.Position.X + 3.0f);
+                outgoingMessage.Write(Game.Player.Character.Position.X + 1.5f);
 
             outgoingMessage.Write(Game.Player.Character.Position.Y);
-            outgoingMessage.Write(World.GetGroundHeight(Game.Player.Character.Position));
+
+            Vector3 correctPosition = Game.Player.Character.Position - new Vector3(0, 0, 1);
+            outgoingMessage.Write(correctPosition.Z); // World.GetGroundHeight(Game.Player.Character.Position)
+
             outgoingMessage.Write(Game.Player.Character.IsWalking);
             outgoingMessage.Write(Game.Player.Character.IsRunning);
             outgoingMessage.Write(Game.Player.Character.IsSprinting);        
@@ -180,6 +183,14 @@ namespace Stroopwaffle {
             outgoingMessage.Write(runTo.Y);
             outgoingMessage.Write(runTo.Z);
             outgoingMessage.Write(Function.Call<bool>(Hash.IS_PED_JUMPING, Game.Player.Character.Handle));
+
+            outgoingMessage.Write(Game.Player.Character.IsRagdoll);
+            outgoingMessage.Write(Game.Player.Character.IsReloading);
+
+            outgoingMessage.Write(Game.Player.Character.Health);
+            outgoingMessage.Write(Game.Player.Character.MaxHealth);
+            outgoingMessage.Write(Game.Player.Character.Armor);
+            outgoingMessage.Write(Game.Player.Character.IsDead);
 
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
         }
@@ -293,6 +304,28 @@ namespace Stroopwaffle {
             }
         }
 
+        public void ReadSetPedPositionPacket(NetIncomingMessage netIncomingMessage) {
+            int playerId = netIncomingMessage.ReadInt32();
+            float posX = netIncomingMessage.ReadFloat();
+            float posY = netIncomingMessage.ReadFloat();
+            float posZ = netIncomingMessage.ReadFloat();
+
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                if (serverNetworkPlayer.PlayerID == playerId) {
+                    serverNetworkPlayer.Position = new Vector3(posX, posY, posZ);
+
+                    if(serverNetworkPlayer.Ped != null)
+                        serverNetworkPlayer.Ped.Position = new Vector3(posX, posY, posZ);
+
+                    if (serverNetworkPlayer.LocalPlayer) {
+                        Game.Player.Character.Position = new Vector3(posX, posY, posZ);
+                    }
+
+                    Main.ChatBox.Add("Setting position to: " + posX + ", " + posY + "," + posZ);
+                }
+            }
+        }
+
         public void ReadTotalPlayerDataPacket(NetIncomingMessage netIncomingMessage) {
             if (GetLocalPlayer() == null) return;
 
@@ -317,6 +350,19 @@ namespace Stroopwaffle {
             int weaponHash = netIncomingMessage.ReadInt32();
             bool jumping = netIncomingMessage.ReadBoolean();
             int modelHash = netIncomingMessage.ReadInt32();
+            bool visible = netIncomingMessage.ReadBoolean();
+            bool frozen = netIncomingMessage.ReadBoolean();
+            bool ragdoll = netIncomingMessage.ReadBoolean();
+            bool reloading = netIncomingMessage.ReadBoolean();
+            int health = netIncomingMessage.ReadInt32();
+            int maxHealth = netIncomingMessage.ReadInt32();
+            int armor = netIncomingMessage.ReadInt32();
+            bool dead = netIncomingMessage.ReadBoolean();
+
+            // Process local player, if required
+            if (GetLocalPlayer().PlayerID == playerId) {
+                ProcessLocalPlayer(visible, frozen);
+            }        
 
             // We don't want to do ped things on our own player, because we don't have our own physical ped
             if (!Main.CloneSync && GetLocalPlayer().PlayerID == playerId) return;
@@ -344,8 +390,20 @@ namespace Stroopwaffle {
                 networkPlayer.Ped.Task.Jump();
             }
 
+            // We just started reloading
+            if (reloading && !networkPlayer.Reloading) {
+                networkPlayer.Ped.Task.ReloadWeapon();
+            }
+
+            // We just started ragdolling
+            if(ragdoll && !networkPlayer.Ragdoll) {
+                Function.Call(Hash.SET_PED_TO_RAGDOLL, networkPlayer.Ped, 10000, 10000, 0, 1, 1, 0);
+                Function.Call(Hash.CREATE_NM_MESSAGE, 1, 466);
+                Function.Call(Hash.GIVE_PED_NM_MESSAGE, networkPlayer.Ped);
+            }
+
             // We have a new model!
-            if(networkPlayer.Model != modelHash) {
+            if (networkPlayer.Model != modelHash) {
                 SetPlayerPed(networkPlayer, modelHash);
             }
 
@@ -361,6 +419,16 @@ namespace Stroopwaffle {
             networkPlayer.CurrentWeapon = weaponHash;
             networkPlayer.Jumping = jumping;
             networkPlayer.Model = modelHash;
+            networkPlayer.Ragdoll = ragdoll;
+            networkPlayer.Reloading = reloading;
+            networkPlayer.Health = health;
+            networkPlayer.MaxHealth = maxHealth;
+            networkPlayer.Armor = armor;
+            networkPlayer.Dead = dead;
+
+            networkPlayer.Ped.IsVisible = visible;
+            networkPlayer.Ped.FreezePosition = frozen;
+
 
             // Update the player if he's not in a vehicle
             if (networkPlayer.NetVehicle == null) {
@@ -402,7 +470,13 @@ namespace Stroopwaffle {
                     networkPlayer.Ped.Weapons.Select(weapon);
                 }
 
-                networkPlayer.Ped.Position = new Vector3(posX, posY, posZ);
+                // Don't update pos if in ragdoll
+                if (!networkPlayer.Ragdoll) {
+                    networkPlayer.Ped.Position = new Vector3(posX, posY, posZ);
+                }
+                else {
+                    networkPlayer.Ped.Position = new Vector3(posX, posY, World.GetGroundHeight(new Vector3(posX, posY, posZ)));
+                }
             }
 
             networkPlayer.Position = new Vector3(posX, posY, posZ);
@@ -415,6 +489,11 @@ namespace Stroopwaffle {
                 }
             }
             Switch++;
+        }
+
+        private void ProcessLocalPlayer(bool visible, bool frozen) {
+            Game.Player.Character.IsVisible = visible;
+            Game.Player.Character.FreezePosition = frozen;
         }
 
         public void ReadTotalVehicleDataPacket(NetIncomingMessage netIncomingMessage) {
@@ -454,6 +533,8 @@ namespace Stroopwaffle {
                 // Testing ;)
                 networkVehicle.PhysicalVehicle.CanBeVisiblyDamaged = false;
                 networkVehicle.PhysicalVehicle.EngineRunning = true;
+                networkVehicle.PhysicalVehicle.PrimaryColor = (VehicleColor)primaryColor;
+                networkVehicle.PhysicalVehicle.SecondaryColor = (VehicleColor)secondaryColor;
 
                 Vehicles.Add(networkVehicle);
                 Main.ChatBox.Add("(internal) Added new vehicle id: " + id);
@@ -538,8 +619,100 @@ namespace Stroopwaffle {
                     else if(receivedPacket == PacketType.TotalVehicleData) {
                         ReadTotalVehicleDataPacket(netIncomingMessage);
                     }
+                    else if (receivedPacket == PacketType.SetPedPosition) {
+                        ReadSetPedPositionPacket(netIncomingMessage);
+                    }
+                    else if (receivedPacket == PacketType.SetPlayerArmor) {
+                        ReadSetPlayerArmorPacket(netIncomingMessage);
+                    }
+                    else if (receivedPacket == PacketType.SetPlayerHealth) {
+                        ReadSetPlayerHealthPacket(netIncomingMessage);
+                    }
+                    else if(receivedPacket == PacketType.NewPed) {
+                        ReadNewPedPacket(netIncomingMessage);
+                    }
+                    else if (receivedPacket == PacketType.GivePlayerWeapon) {
+                        ReadGivePlayerWeaponPacket(netIncomingMessage);
+                    }
                 }
                 NetClient.Recycle(netIncomingMessage);
+            }
+        }
+
+        private void ReadGivePlayerWeaponPacket(NetIncomingMessage netIncomingMessage) {
+            int playerId = netIncomingMessage.ReadInt32();
+            int weaponId = netIncomingMessage.ReadInt32();
+
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                if (serverNetworkPlayer.PlayerID == playerId) {
+                    serverNetworkPlayer.Weapons.Add(weaponId);
+
+                    if (serverNetworkPlayer.LocalPlayer) {
+                        Weapon weapon = Game.Player.Character.Weapons.Give((WeaponHash)weaponId, 9999, true, true);
+
+                        Main.ChatBox.Add("DEBUG: You have been given: " + weapon.Hash);
+                    }
+
+                    // We don't want to do ped things on our own player, because we don't have our own physical ped
+                    if (Main.CloneSync || GetLocalPlayer().PlayerID != playerId) {
+                        Weapon weapon = serverNetworkPlayer.Ped.Weapons.Give((WeaponHash)weaponId, 9999, true, true);
+                    }
+                }
+            }
+        }
+
+        private void ReadNewPedPacket(NetIncomingMessage netIncomingMessage) {
+            int playerId = netIncomingMessage.ReadInt32();
+
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                if (serverNetworkPlayer.PlayerID == playerId) {
+
+                    // We don't want to do ped things on our own player, because we don't have our own physical ped
+                    if (!Main.CloneSync && GetLocalPlayer().PlayerID == playerId) return;
+
+                    serverNetworkPlayer.Ped.CurrentBlip.Remove();
+                    serverNetworkPlayer.CreatePed(serverNetworkPlayer.Position, serverNetworkPlayer.Model, WorldRelationship);
+                }
+            }
+        }
+
+        public void ReadSetPlayerArmorPacket(NetIncomingMessage netIncomingMessage) {
+            int playerId = netIncomingMessage.ReadInt32();
+            int armor = netIncomingMessage.ReadInt32();
+
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                if (serverNetworkPlayer.PlayerID == playerId) {
+                    serverNetworkPlayer.Armor = armor;
+
+                    if (serverNetworkPlayer.LocalPlayer) {
+                        Game.Player.Character.Armor = armor;
+                    }
+                }
+            }
+        }
+
+        public void ReadSetPlayerHealthPacket(NetIncomingMessage netIncomingMessage) {
+            int playerId = netIncomingMessage.ReadInt32();
+            int health = netIncomingMessage.ReadInt32();
+
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                if (serverNetworkPlayer.PlayerID == playerId) {
+                    serverNetworkPlayer.Health = health;
+
+                    if (health <= 0) {
+                        // We don't want to do ped things on our own player, because we don't have our own physical ped
+                        if (Main.CloneSync || GetLocalPlayer().PlayerID != playerId)
+                            serverNetworkPlayer.Ped.Kill();
+                    }
+
+                    if (serverNetworkPlayer.LocalPlayer) {
+                        Game.Player.Character.Health = health;
+
+                        if (health <= 0) {
+                            Game.Player.Character.Kill();
+                        }
+                    }
+                }
             }
         }
 

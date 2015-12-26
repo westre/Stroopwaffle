@@ -24,7 +24,7 @@ namespace Stroopwaffle_Server {
 
         public NetworkVehicle NetVehicle { get; set; }
         public bool Jumping { get; set; }
-        public int Model { get; set; }
+        public uint Model { get; set; }
         public bool Visible { get; set; }
         public bool Frozen { get; internal set; }
         public bool Ragdoll { get; internal set; }

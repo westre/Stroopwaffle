@@ -24,6 +24,7 @@ namespace Stroopwaffle_Server {
             OnPlayerInitialize,
             OnPlayerDied,
             OnPlayerRespawn,
+            OnOOS
         }
 
         public API(Server server) {
@@ -49,6 +50,7 @@ namespace Stroopwaffle_Server {
             Lua.RegisterFunction("setPlayerHealth", this, typeof(API).GetMethod("API_setPlayerHealth"));
             Lua.RegisterFunction("setPlayerArmor", this, typeof(API).GetMethod("API_setPlayerArmor"));
             Lua.RegisterFunction("givePlayerWeapon", this, typeof(API).GetMethod("API_givePlayerWeapon"));
+            Lua.RegisterFunction("setPlayerModel", this, typeof(API).GetMethod("API_setPlayerModel"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -141,6 +143,16 @@ namespace Stroopwaffle_Server {
             }
         }
 
+        public void API_setPlayerModel(int playerId, uint model) {
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
+
+            if (networkPlayer != null) {
+                networkPlayer.Model = model;
+                Server.SendSetPlayerModelPacket(networkPlayer.PlayerID, networkPlayer.Model);
+            }
+        }
+
+        // Change this to RPC
         public void API_setPlayerVisible(int playerId, bool visibility) {
             NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
             if (networkPlayer != null) {
@@ -148,6 +160,7 @@ namespace Stroopwaffle_Server {
             }
         }
 
+        // Change this to RPC
         public void API_freezePlayer(int playerId, bool freeze) {
             NetworkPlayer networkPlayer = NetworkPlayer.Get(Server.Players, playerId);
             if (networkPlayer != null) {

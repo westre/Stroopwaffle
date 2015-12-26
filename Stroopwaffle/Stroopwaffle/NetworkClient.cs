@@ -27,6 +27,8 @@ namespace Stroopwaffle {
 
         public List<NetworkVehicle> Vehicles { get; set; }
 
+        public OOSDetector OOSDetector { get; set; }
+
         public NetworkClient(Main main) {
             Main = main;
 
@@ -35,6 +37,7 @@ namespace Stroopwaffle {
 
             ServerPlayers = new List<NetworkPlayer>();
             Vehicles = new List<NetworkVehicle>();
+            OOSDetector = new OOSDetector(this);
 
             NetClient = new NetClient(config);
             NetClient.Start();
@@ -75,7 +78,7 @@ namespace Stroopwaffle {
                     }
 
                     if(!foundNetworkVehicle) {
-                        Main.ChatBox.Add("NetworkVehicle NULL, Cheat?");
+                        OOSDetector.InvalidVehicle(Game.Player.Character.CurrentVehicle);
                     }
                 }
                 else {
@@ -84,7 +87,10 @@ namespace Stroopwaffle {
 
                 SendPositionPacket();
                 SendRotationPacket();
-                SendPedModelPacket();
+
+                if(GetLocalPlayer().Model != (uint)Game.Player.Character.Model.Hash) {
+                    OOSDetector.InvalidModel((uint)Game.Player.Character.Model.Hash);
+                }
 
                 if (Game.Player.Character.Weapons.Current != null) {
                     SendWeaponPacket();
@@ -101,22 +107,12 @@ namespace Stroopwaffle {
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
         }
 
-        #warning Unsafe: No server-side check
         private void SendWeaponPacket() {
             NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
             outgoingMessage.Write((byte)PacketType.CurrentWeapon);
             outgoingMessage.Write(GetLocalPlayer().PlayerID);
             outgoingMessage.Write((int)Game.Player.Character.Weapons.Current.Hash);
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
-        }
-        
-        #warning Unsafe: No server-side check
-        private void SendPedModelPacket() {
-            NetOutgoingMessage outgoingMessage = NetClient.CreateMessage();
-            outgoingMessage.Write((byte)PacketType.CurrentModel);
-            outgoingMessage.Write(GetLocalPlayer().PlayerID);
-            outgoingMessage.Write(Game.Player.Character.Model.Hash);
-            NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.ReliableOrdered);
         }
 
         private void SendVehiclePacket(NetworkVehicle netVehicle, NetworkPlayer netPlayer) {
@@ -250,8 +246,27 @@ namespace Stroopwaffle {
             Vector3 position = new Vector3(posX, posY, posZ);
             Game.Player.Character.Position = position;
 
-            // Sets safe for net flag
-            SafeForNet = safeForNet;
+            // Removes all weapons from player
+            Game.Player.Character.Weapons.RemoveAll();
+
+            // Set default server synchronized player model
+            var characterModel = new Model(PedHash.Brad);
+            characterModel.Request(500);
+
+            // Check the model is valid
+            if (characterModel.IsInCdImage && characterModel.IsValid) {
+                // If the model isn't loaded, wait until it is
+                while (!characterModel.IsLoaded) Script.Wait(100);
+
+                // Set the player's model
+                Function.Call(Hash.SET_PLAYER_MODEL, Game.Player, characterModel.Hash);
+                Function.Call(Hash.SET_PED_DEFAULT_COMPONENT_VARIATION, Game.Player.Character.Handle);
+
+                GetLocalPlayer().Model = (uint)PedHash.Brad;
+            }
+
+            // Delete the model from memory after we've assigned it
+            characterModel.MarkAsNoLongerNeeded();
 
             Main.ChatBox.Add("(internal) Allocated PlayerID: " + GetLocalPlayer().PlayerID);
             //Main.ChatBox.Add("(internal) Packet data: " + receivedPacket + ", " + playerId + ", " + posX + ", " + posY + ", " + posZ + ", " + safeForNet);
@@ -260,8 +275,8 @@ namespace Stroopwaffle {
             World.SetRelationshipBetweenGroups(Relationship.Companion, WorldRelationship, Game.Player.Character.RelationshipGroup); // Make the opposing party ally us (no fleeing)
             World.SetRelationshipBetweenGroups(Relationship.Neutral, Game.Player.Character.RelationshipGroup, WorldRelationship);
 
-            // Debug
-            Game.Player.Character.Weapons.Give(WeaponHash.Pistol, 9999, true, true);
+            // Sets safe for net flag
+            SafeForNet = safeForNet;
         }
 
         public void ReadDeinitializationPacket(NetIncomingMessage netIncomingMessage) {
@@ -349,7 +364,6 @@ namespace Stroopwaffle {
             float runToZ = netIncomingMessage.ReadFloat();
             int weaponHash = netIncomingMessage.ReadInt32();
             bool jumping = netIncomingMessage.ReadBoolean();
-            int modelHash = netIncomingMessage.ReadInt32();
             bool visible = netIncomingMessage.ReadBoolean();
             bool frozen = netIncomingMessage.ReadBoolean();
             bool ragdoll = netIncomingMessage.ReadBoolean();
@@ -358,6 +372,7 @@ namespace Stroopwaffle {
             int maxHealth = netIncomingMessage.ReadInt32();
             int armor = netIncomingMessage.ReadInt32();
             bool dead = netIncomingMessage.ReadBoolean();
+            uint modelHash = (uint)netIncomingMessage.ReadInt32();
 
             // Process local player, if required
             if (GetLocalPlayer().PlayerID == playerId) {
@@ -407,8 +422,6 @@ namespace Stroopwaffle {
                 SetPlayerPed(networkPlayer, modelHash);
             }
 
-            //Main.ChatBox.Add("Hash: " + networkPlayer.Model);
-
             networkPlayer.Aiming = aiming;
             networkPlayer.AimPosition = new Vector3(aimPosX, aimPosY, aimPosZ);
             networkPlayer.Shooting = shooting;
@@ -418,7 +431,6 @@ namespace Stroopwaffle {
             networkPlayer.RunTo = new Vector3(runToX, runToY, runToZ);
             networkPlayer.CurrentWeapon = weaponHash;
             networkPlayer.Jumping = jumping;
-            networkPlayer.Model = modelHash;
             networkPlayer.Ragdoll = ragdoll;
             networkPlayer.Reloading = reloading;
             networkPlayer.Health = health;
@@ -428,7 +440,6 @@ namespace Stroopwaffle {
 
             networkPlayer.Ped.IsVisible = visible;
             networkPlayer.Ped.FreezePosition = frozen;
-
 
             // Update the player if he's not in a vehicle
             if (networkPlayer.NetVehicle == null) {
@@ -470,13 +481,23 @@ namespace Stroopwaffle {
                     networkPlayer.Ped.Weapons.Select(weapon);
                 }
 
-                // Don't update pos if in ragdoll
-                if (!networkPlayer.Ragdoll) {
-                    networkPlayer.Ped.Position = new Vector3(posX, posY, posZ);
+                if(!Main.Interpolation) {
+                    if (!networkPlayer.Ragdoll) {
+                        networkPlayer.Ped.Position = new Vector3(posX, posY, posZ);
+                    }
+                    else {
+                        networkPlayer.Ped.Position = new Vector3(posX, posY, World.GetGroundHeight(new Vector3(posX, posY, posZ)));
+                    }
                 }
                 else {
-                    networkPlayer.Ped.Position = new Vector3(posX, posY, World.GetGroundHeight(new Vector3(posX, posY, posZ)));
-                }
+                    networkPlayer.LatestPosition = new Vector3(posX, posY, posZ);
+
+                    DateTime dt = DateTime.Now;
+                    dt = dt.AddMilliseconds((float)Rate.PedInterpolation);
+
+                    networkPlayer.LatestPositionTime = dt;
+                    networkPlayer.PreviousPosition = networkPlayer.Ped.Position;
+                }           
             }
 
             networkPlayer.Position = new Vector3(posX, posY, posZ);
@@ -513,10 +534,42 @@ namespace Stroopwaffle {
             int secondaryColor = netIncomingMessage.ReadInt32();
             float speed = netIncomingMessage.ReadFloat();
 
-            // We don't want to do ped things on our own player, because we don't have our own physical ped
-            if (!Main.CloneSync && GetLocalPlayer().PlayerID == playerId) return;
-
             NetworkVehicle networkVehicle = NetworkVehicle.Exists(Vehicles, id);
+
+            // Clone debug sync
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(ServerPlayers, playerId);
+            if(networkPlayer != null && Main.CloneSync) {
+                if(networkPlayer.CloneVehicle == null) {
+                    networkPlayer.CloneVehicle = new NetworkVehicle();
+
+                    networkPlayer.CloneVehicle.PhysicalVehicle = World.CreateVehicle(vehicleHash, new Vector3(posX + 5, posY, posZ));
+                    networkPlayer.CloneVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+                    networkPlayer.CloneVehicle.PhysicalVehicle.CanTiresBurst = false;
+                    networkPlayer.CloneVehicle.PhysicalVehicle.PlaceOnGround();
+
+                    // Testing ;)
+                    networkPlayer.CloneVehicle.PhysicalVehicle.CanBeVisiblyDamaged = false;
+                    networkPlayer.CloneVehicle.PhysicalVehicle.EngineRunning = true;
+                    networkPlayer.CloneVehicle.PhysicalVehicle.PrimaryColor = (VehicleColor)primaryColor;
+                    networkPlayer.CloneVehicle.PhysicalVehicle.SecondaryColor = (VehicleColor)secondaryColor;
+                    Main.ChatBox.Add("Created new debug vehicle");
+                }
+
+                // Interpolation
+                networkPlayer.VehicleLatestPosition = new Vector3(posX + 5, posY, posZ);
+
+                DateTime dt = DateTime.Now;
+                dt = dt.AddMilliseconds((float)Rate.VehicleInterpolation);
+
+                networkPlayer.VehicleLatestPositionTime = dt;
+                networkPlayer.VehiclePreviousPosition = networkPlayer.CloneVehicle.PhysicalVehicle.Position;
+                networkPlayer.CloneVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+
+                if (!Main.Interpolation) {
+                    networkPlayer.CloneVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ) + new Vector3(5, 0, 0);
+                    networkPlayer.CloneVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
+                } 
+            }
 
             // It exists in our list
             if (networkVehicle == null) {
@@ -544,7 +597,7 @@ namespace Stroopwaffle {
             if (networkVehicle.PlayerID != playerId) {
                 NetworkPlayer driver = NetworkPlayer.Get(ServerPlayers, playerId);
                 if (driver != null) {
-                    driver.Ped.Task.WarpIntoVehicle(networkVehicle.PhysicalVehicle, VehicleSeat.Any);
+                    driver.Ped?.Task.WarpIntoVehicle(networkVehicle.PhysicalVehicle, VehicleSeat.Any); // If we don't have a ped, i.e. localplayer
                     driver.NetVehicle = networkVehicle;
                     Main.ChatBox.Add("(internal) Set driver ped in vehicle: " + networkVehicle.PhysicalVehicle.Model.ToString());
                 }
@@ -634,8 +687,48 @@ namespace Stroopwaffle {
                     else if (receivedPacket == PacketType.GivePlayerWeapon) {
                         ReadGivePlayerWeaponPacket(netIncomingMessage);
                     }
+                    else if (receivedPacket == PacketType.SetPlayerModel) {
+                        ReadSetPlayerModelPacket(netIncomingMessage);
+                    }
                 }
                 NetClient.Recycle(netIncomingMessage);
+            }
+        }
+
+        private void ReadSetPlayerModelPacket(NetIncomingMessage netIncomingMessage) {
+            int playerId = netIncomingMessage.ReadInt32();
+            uint modelId = (uint)netIncomingMessage.ReadInt32();
+
+            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+                if (serverNetworkPlayer.PlayerID == playerId) {
+                    serverNetworkPlayer.Model = modelId;
+
+                    var characterModel = new Model((PedHash)serverNetworkPlayer.Model);
+                    characterModel.Request(500);
+
+                    if (serverNetworkPlayer.LocalPlayer) {
+                        // Check the model is valid
+                        if (characterModel.IsInCdImage && characterModel.IsValid) {
+                            // If the model isn't loaded, wait until it is
+                            while (!characterModel.IsLoaded) Script.Wait(100);
+
+                            // Set the player's model
+                            Function.Call(Hash.SET_PLAYER_MODEL, Game.Player, characterModel.Hash);
+                            Function.Call(Hash.SET_PED_DEFAULT_COMPONENT_VARIATION, Game.Player.Character.Handle);
+                        }
+
+                        Main.ChatBox.Add("DEBUG: Model has been set to: " + modelId);
+                    }
+
+                    // We don't want to do ped things on our own player, because we don't have our own physical ped
+                    if (Main.CloneSync || GetLocalPlayer().PlayerID != playerId) {
+                        SetPlayerPed(serverNetworkPlayer, serverNetworkPlayer.Model);
+                        //Function.Call(Hash.SET_PLAYER_MODEL, serverNetworkPlayer.Ped, serverNetworkPlayer.Model);
+                    }
+
+                    // Delete the model from memory after we've assigned it
+                    characterModel.MarkAsNoLongerNeeded();
+                }
             }
         }
 
@@ -748,7 +841,7 @@ namespace Stroopwaffle {
 
             // Create the physical ped
             if(!localPlayer || Main.CloneSync) {
-                networkPlayer.CreatePed(networkPlayer.Position, PedHash.FibMugger01, WorldRelationship);
+                networkPlayer.CreatePed(networkPlayer.Position, (uint)PedHash.Brad, WorldRelationship);
             }
                   
             ServerPlayers.Add(networkPlayer);
@@ -758,7 +851,7 @@ namespace Stroopwaffle {
             return networkPlayer;
         }
 
-        private void SetPlayerPed(NetworkPlayer networkPlayer, int modelHash) {
+        private void SetPlayerPed(NetworkPlayer networkPlayer, uint modelHash) {
             if (networkPlayer.Ped != null) {
                 networkPlayer.Ped.Delete();
                 networkPlayer.CreatePed(networkPlayer.Position, modelHash, WorldRelationship);

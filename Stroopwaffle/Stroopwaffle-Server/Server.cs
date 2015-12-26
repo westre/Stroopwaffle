@@ -19,6 +19,7 @@ namespace Stroopwaffle_Server {
         private bool[] VehicleIDs { get; set; }
 
         private API API { get; set; }
+        private OOSListener OOSListener { get; set; }
 
         public struct ConfigurationData {
             public string ServerName;
@@ -69,7 +70,9 @@ namespace Stroopwaffle_Server {
         public Server(ServerForm form, NetPeerConfiguration config) : base(config) {
             Form = form;
             List<string> errors = new List<string>();
+
             API = new API(this);
+            OOSListener = new OOSListener(API);
 
             // Allocate 100 potential player ids
             PlayerIDs = new bool[100];
@@ -105,7 +108,7 @@ namespace Stroopwaffle_Server {
                 Start();
 
                 System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
-                timer.Interval = 10;
+                timer.Interval = (int)Rate.ServerTick;
                 timer.Tick += Tick;
                 timer.Start();
 
@@ -188,6 +191,7 @@ namespace Stroopwaffle_Server {
                                         networkPlayer.Rotation = new Vector3(0f, 0f, 0f);
                                         networkPlayer.AimLocation = new Vector3(0f, 0f, 0f);
                                         networkPlayer.RunTo = new Vector3(0f, 0f, 0f);
+                                        networkPlayer.Model = 3183167778; //Brad
 
                                         // Safe for network interaction
                                         networkPlayer.SafeForNet = true;
@@ -286,6 +290,19 @@ namespace Stroopwaffle_Server {
                                     }
                                     break;
 
+                                case PacketType.OOSPacket:
+                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
+                                    OOSPacket oosPacket = (OOSPacket)netIncomingMessage.ReadByte();
+                                    playerId = netIncomingMessage.ReadInt32();
+
+                                    if(networkPlayer.PlayerID == playerId) {
+                                        OOSListener.Process(networkPlayer, oosPacket);
+                                    }
+                                    else {
+                                        Form.Output("Fatal error: PlayerID mismatch!!!" + " NetworkPlayer: " + networkPlayer.PlayerID + ",id: " + playerId);
+                                    }
+                                    break;
+
                                 case PacketType.Aiming:
                                     networkPlayer = Find(netIncomingMessage.SenderConnection);
 
@@ -343,18 +360,13 @@ namespace Stroopwaffle_Server {
                                     playerId = netIncomingMessage.ReadInt32();
                                     int weaponHash = netIncomingMessage.ReadInt32();
 
-                                    networkPlayer.CurrentWeapon = weaponHash;
-
-                                    break;
-
-                                case PacketType.CurrentModel:
-                                    networkPlayer = Find(netIncomingMessage.SenderConnection);
-
-                                    playerId = netIncomingMessage.ReadInt32();
-                                    int modelHash = netIncomingMessage.ReadInt32();
-
-                                    networkPlayer.Model = modelHash;
-
+                                    // Unarmed
+                                    if(networkPlayer.Weapons.Contains(weaponHash) || (uint)weaponHash == 2725352035) {
+                                        networkPlayer.CurrentWeapon = weaponHash;
+                                    }
+                                    else {
+                                        OOSListener.Process(networkPlayer, OOSPacket.InvalidWeapon);
+                                    }                                 
                                     break;
 
                                 case PacketType.TotalVehicleData:
@@ -422,7 +434,17 @@ namespace Stroopwaffle_Server {
             }
         }
 
-        internal void SendGivePlayerWeaponPacket(int playerId, int weaponId) {
+        public void SendSetPlayerModelPacket(int playerId, uint model) {
+            if (GetAllConnections().Count == 0) return;
+
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.SetPlayerModel);
+            outgoingMessage.Write(playerId);
+            outgoingMessage.Write(model);
+            SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.ReliableOrdered, 0);
+        }
+
+        public void SendGivePlayerWeaponPacket(int playerId, int weaponId) {
             if (GetAllConnections().Count == 0) return;
 
             NetOutgoingMessage outgoingMessage = CreateMessage();
@@ -548,7 +570,6 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.RunTo.Z);
                         outgoingMessage.Write(netPlayer.CurrentWeapon);
                         outgoingMessage.Write(netPlayer.Jumping);
-                        outgoingMessage.Write(netPlayer.Model);
                         outgoingMessage.Write(netPlayer.Visible);
                         outgoingMessage.Write(netPlayer.Frozen);
                         outgoingMessage.Write(netPlayer.Ragdoll);
@@ -557,6 +578,7 @@ namespace Stroopwaffle_Server {
                         outgoingMessage.Write(netPlayer.MaxHealth);
                         outgoingMessage.Write(netPlayer.Armor);
                         outgoingMessage.Write(netPlayer.Dead);
+                        outgoingMessage.Write(netPlayer.Model);
                         SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
                     }
                 }

@@ -60,6 +60,7 @@
     <Compile Include="NetworkPlayer.cs" />
     <Compile Include="NativeMethods.cs" />
     <Compile Include="API.cs" />
+    <Compile Include="OOSListener.cs" />
     <Compile Include="Server.cs" />
     <Compile Include="ServerForm.cs">
       <SubType>Form</SubType>

@@ -5,6 +5,13 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Stroopwaffle_Shared {
+
+    public enum Rate {
+        ServerTick = 10, // 1/30 = 33Hz
+        PedInterpolation = 7, // ms in future
+        VehicleInterpolation = 2000
+    }
+
     public enum PacketType {
         Initialization,
         Position,
@@ -17,11 +24,18 @@ namespace Stroopwaffle_Shared {
         NoVehicle,
         TotalVehicleData,
         CurrentWeapon,
-        CurrentModel,
         SetPedPosition,
         SetPlayerArmor,
         SetPlayerHealth,
         NewPed,
-        GivePlayerWeapon
+        GivePlayerWeapon,
+        OOSPacket,
+        SetPlayerModel
+    }
+
+    public enum OOSPacket {
+        InvalidVehicle,
+        InvalidWeapon,
+        InvalidModel
     }
 }

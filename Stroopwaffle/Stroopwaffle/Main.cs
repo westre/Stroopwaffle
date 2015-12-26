@@ -32,7 +32,8 @@ public class Main : Script {
     public Chatbox ChatBox { get; set; }
     public StatisticsUI StatisticsUI { get; set; }
 
-    public static bool CloneSync { get; set; } = true; 
+    public static bool CloneSync { get; set; } = true;
+    public static bool Interpolation { get; set; } = false;
 
     public Main() {
         NetworkClient = new NetworkClient(this);
@@ -43,8 +44,61 @@ public class Main : Script {
         this.Tick += OnTick;
         this.Tick += OnNetworkTick;
 
+        if(Interpolation) {
+            this.Tick += OnPlayerPedUpdate;
+            this.Tick += OnPlayerVehicleUpdate;
+        }
+        
         this.KeyUp += OnKeyUp;
         this.KeyDown += OnKeyDown;  
+    }
+
+    private void OnPlayerVehicleUpdate(object sender, EventArgs e) {
+        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
+        foreach (NetworkPlayer networkPlayer in safePlayerList) {
+            if (networkPlayer.CloneVehicle != null) {
+                DateTimeOffset playerDto = new DateTimeOffset(networkPlayer.VehicleLatestPositionTime);
+                DateTimeOffset nowDto = new DateTimeOffset(DateTime.Now);
+
+                if (playerDto.ToUnixTimeMilliseconds() > nowDto.ToUnixTimeMilliseconds()) {
+                    //                  500 + 100ms (100ms in future)
+                    // Example: 1.0f - (600 - 500) / 100
+                    float t = 1.0f - ((playerDto.ToUnixTimeMilliseconds() - nowDto.ToUnixTimeMilliseconds()) / (float)Rate.VehicleInterpolation);
+                    Vector3 DeadReckoning = networkPlayer.VehicleLatestPosition - networkPlayer.VehiclePreviousPosition;
+                    Vector3 LerpedVector = Vector3.Lerp(networkPlayer.VehiclePreviousPosition, networkPlayer.VehicleLatestPosition + DeadReckoning, t);
+
+                    networkPlayer.CloneVehicle.PhysicalVehicle.Position = new Vector3(LerpedVector.X, LerpedVector.Y, networkPlayer.VehicleLatestPosition.Z);
+
+                    ChatBox.Add(playerDto.ToUnixTimeMilliseconds() - nowDto.ToUnixTimeMilliseconds() + " / " + (float)Rate.VehicleInterpolation + " = " + (playerDto.ToUnixTimeMilliseconds() - nowDto.ToUnixTimeMilliseconds()) / (float)Rate.PedInterpolation);
+                }
+            }
+        }
+    }
+
+    private void OnPlayerPedUpdate(object sender, EventArgs e) {
+        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
+        foreach (NetworkPlayer networkPlayer in safePlayerList) {
+            if(networkPlayer.NetVehicle == null) {
+                DateTimeOffset playerDto = new DateTimeOffset(networkPlayer.LatestPositionTime);
+                DateTimeOffset nowDto = new DateTimeOffset(DateTime.Now);
+
+                if (playerDto.ToUnixTimeMilliseconds() > nowDto.ToUnixTimeMilliseconds()) {
+                    //                  500 + 100ms (100ms in future)
+                    // Example: 1.0f - (600 - 500) / 100
+                    float t = 1.0f - ((playerDto.ToUnixTimeMilliseconds() - nowDto.ToUnixTimeMilliseconds()) / (float)Rate.PedInterpolation);
+                    Vector3 LerpedVector = Vector3.Lerp(networkPlayer.PreviousPosition, networkPlayer.LatestPosition, t);
+
+                    if (!networkPlayer.Ragdoll) {
+                        networkPlayer.Ped.Position = new Vector3(LerpedVector.X, LerpedVector.Y, networkPlayer.LatestPosition.Z);
+                    }
+                    else {
+                        networkPlayer.Ped.Position = new Vector3(LerpedVector.X, LerpedVector.Y, World.GetGroundHeight(LerpedVector));
+                    }
+
+                    //ChatBox.Add(playerDto.ToUnixTimeMilliseconds() - nowDto.ToUnixTimeMilliseconds() + " / " + (float)Rate.PedInterpolation + " = " + (playerDto.ToUnixTimeMilliseconds() - nowDto.ToUnixTimeMilliseconds()) / (float)Rate.PedInterpolation);
+                }
+            }
+        }
     }
 
     private void OnNetworkTick(object sender, EventArgs e) {
@@ -93,11 +147,13 @@ public class Main : Script {
         Function.Call(Hash.SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME, 0f, 0f);
         Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 19, 1); // Disable character wheel
         Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 44, 1); // Disable cover
-        Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 171, 1); // Disable INPUT_SPECIAL_ABILITY_PC
+        Function.Call(Hash.DISABLE_CONTROL_ACTION, 0, 171, 1); // Disable INPUT_SPECIAL_ABILITY_PC 
         Function.Call(Hash.SET_MAX_WANTED_LEVEL, 0);
         Function.Call(Hash.SET_GARBAGE_TRUCKS, 0);
         Function.Call(Hash.SET_RANDOM_BOATS, 0);
         Function.Call(Hash.SET_RANDOM_TRAINS, 0);
+
+        Function.Call(Hash.SET_GAME_PAUSED, false); // lel?
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e) {

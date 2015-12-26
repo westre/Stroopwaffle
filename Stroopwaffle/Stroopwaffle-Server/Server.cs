@@ -127,6 +127,7 @@ namespace Stroopwaffle_Server {
 
         private void Tick(object sender, EventArgs e) {
             SendUpdate();
+            API.Tick();
         }
 
         public void Application_Idle(object sender, EventArgs e) {

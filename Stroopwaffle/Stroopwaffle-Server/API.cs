@@ -11,9 +11,17 @@ using System.Threading.Tasks;
 //http://stackoverflow.com/questions/22666142/how-to-use-c-sharp-static-string-with-nlua/22672113#22672113
 
 namespace Stroopwaffle_Server {
+    class ScriptTimer {
+        public string Function { get; set; }
+        public DateTime ExecuteOn { get; set; }
+        public LuaTable Arguments { get; set; }
+    }
+
     class API {
         private Server Server { get; set; }
         public Lua Lua { get; set; }
+
+        private List<ScriptTimer> ScriptTimers { get; set; }
 
         public enum Callback {
             OnScriptInitialize,
@@ -30,8 +38,26 @@ namespace Stroopwaffle_Server {
         public API(Server server) {
             Server = server;
             Lua = new Lua();
+            ScriptTimers = new List<ScriptTimer>();
 
             RegisterAllFunctions();
+        }
+
+        public void Tick() {
+            List<ScriptTimer> safeScriptTimers = new List<ScriptTimer>(ScriptTimers);
+            DateTime now = DateTime.Now;
+
+            foreach(ScriptTimer scriptTimer in safeScriptTimers) {
+                if(now >= scriptTimer.ExecuteOn) {
+                    LuaFunction function = (LuaFunction)Lua[scriptTimer.Function];
+
+                    if (function != null) {
+                        function.Call(scriptTimer.Arguments);
+
+                        ScriptTimers.Remove(scriptTimer);
+                    }
+                }
+            }
         }
 
         private void RegisterAllFunctions() {
@@ -51,6 +77,9 @@ namespace Stroopwaffle_Server {
             Lua.RegisterFunction("setPlayerArmor", this, typeof(API).GetMethod("API_setPlayerArmor"));
             Lua.RegisterFunction("givePlayerWeapon", this, typeof(API).GetMethod("API_givePlayerWeapon"));
             Lua.RegisterFunction("setPlayerModel", this, typeof(API).GetMethod("API_setPlayerModel"));
+
+            Lua.RegisterFunction("setTimer", this, typeof(API).GetMethod("API_setTimer"));
+            Lua.RegisterFunction("consolePrint", this, typeof(API).GetMethod("API_consolePrint"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -73,6 +102,21 @@ namespace Stroopwaffle_Server {
         public void API_broadcastMessage(string message) {
             Server.Form.Output("API_DEBUG: " + message);
             Server.SendBroadcastMessagePacket(message);
+        }
+
+        public void API_setTimer(int milliseconds, string callback, LuaTable luaTable) {
+            DateTime execute = DateTime.Now;
+            execute = execute.AddMilliseconds(milliseconds);
+
+            ScriptTimers.Add(new ScriptTimer() {
+                ExecuteOn = execute,
+                Function = callback,
+                Arguments = luaTable
+            });
+        }
+
+        public void API_consolePrint(string message) {
+            Server.Form.Output(message);
         }
 
         public void API_broadcastPlayerMessage(int playerId, string message) {

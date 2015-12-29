@@ -453,21 +453,14 @@ namespace Stroopwaffle_Server {
             }
         }
 
-        /*public void SendGUICreateRectanglePacket(NetConnection netConnection, int playerId, Point point, Size size, Color color) {
+        public void SendGUIRemovePacket(NetConnection netConnection, int playerId, int networkUiId) {
             NetOutgoingMessage outgoingMessage = CreateMessage();
             outgoingMessage.Write((byte)PacketType.GUIPacket);
-            outgoingMessage.Write((byte)GUIPacket.CreateRectangle);
+            outgoingMessage.Write((byte)GUIPacket.RemoveGUIElement);
             outgoingMessage.Write(playerId);
-            outgoingMessage.Write(point.X);
-            outgoingMessage.Write(point.Y);
-            outgoingMessage.Write(size.Width);
-            outgoingMessage.Write(size.Height);
-            outgoingMessage.Write(color.R);
-            outgoingMessage.Write(color.G);
-            outgoingMessage.Write(color.B);
-            outgoingMessage.Write(color.A);
+            outgoingMessage.Write(networkUiId);
             SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.ReliableOrdered);
-        }*/
+        }
 
         public void SendSetPlayerModelPacket(int playerId, uint model) {
             if (GetAllConnections().Count == 0) return;
@@ -733,13 +726,15 @@ namespace Stroopwaffle_Server {
             Vehicles.Add(networkVehicle);
         }
 
-        public void RegisterNetworkUI(NetworkUI networkUI) {
+        public int RegisterNetworkUI(NetworkUI networkUI) {
             int networkUIId = FindAvailableNetworkUIID();
 
             networkUI.ID = networkUIId;
             Form.Output("Allocated ui id: " + networkUIId);
 
             UIs.Add(networkUI);
+
+            return networkUIId;
         }
     }
 }

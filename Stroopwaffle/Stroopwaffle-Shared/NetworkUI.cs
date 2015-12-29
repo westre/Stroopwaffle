@@ -21,5 +21,13 @@ namespace Stroopwaffle_Shared {
 
         // Clientside only
         public UIElement UIElement { get; set; }
+
+        public static NetworkUI Get(List<NetworkUI> UIs, int id) {
+            foreach (NetworkUI ui in UIs) {
+                if (ui.ID == id)
+                    return ui;
+            }
+            return null;
+        }
     }
 }

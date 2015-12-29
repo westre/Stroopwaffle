@@ -88,6 +88,7 @@ namespace Stroopwaffle_Server {
             Lua.RegisterFunction("consolePrint", this, typeof(API).GetMethod("API_consolePrint"));
 
             Lua.RegisterFunction("guiCreateRectangle", this, typeof(API).GetMethod("API_guiCreateRectangle"));
+            Lua.RegisterFunction("removeGui", this, typeof(API).GetMethod("API_removeGui"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -107,7 +108,7 @@ namespace Stroopwaffle_Server {
         }
 
         // All functions
-        public void API_guiCreateRectangle(int playerId, int posX, int posY, int sizeX, int sizeY, byte r, byte g, byte b, byte a) {
+        public int API_guiCreateRectangle(int playerId, int posX, int posY, int sizeX, int sizeY, byte r, byte g, byte b, byte a) {
             NetConnection netConnection = Server.Find(playerId);
             //Server.SendGUICreateRectanglePacket(netConnection, playerId, new Point(posX, posY), new Size(sizeX, sizeY), Color.FromArgb(a, r, g, b));
 
@@ -123,7 +124,23 @@ namespace Stroopwaffle_Server {
             networkUI.B = b;
             networkUI.A = a;
 
-            Server.RegisterNetworkUI(networkUI);
+            int id = Server.RegisterNetworkUI(networkUI);
+
+            return id;
+        }
+
+        public void API_removeGui(int networkUIId) {
+            NetworkUI networkUi = NetworkUI.Get(Server.UIs, networkUIId);
+            NetConnection netConnection = Server.Find(networkUi.PlayerId);
+
+            if (networkUi != null) {
+                Server.UIs.Remove(networkUi);
+                Server.SendGUIRemovePacket(netConnection, networkUi.PlayerId, networkUi.ID);
+                Server.Form.Output("NetworkUI " + networkUi + " removed from playerId: " + networkUi.PlayerId);
+            }
+            else {
+                Server.Form.Output("uiID " + networkUIId + " is null");
+            }
         }
 
         public void API_createVehicle(int vehicleHash, int posX, int posY, int posZ, int rotX, int rotY, int rotZ) {

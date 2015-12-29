@@ -740,28 +740,39 @@ namespace Stroopwaffle {
                     networkUi = ui;
             }
 
-            // It doesn't exist, so create one!
-            if(networkUi == null) {
-                networkUi = new NetworkUI();
-                UIs.Add(networkUi);
+            if(receivedGUIPacket != GUIPacket.RemoveGUIElement) {
+                // It doesn't exist, so create one!
+                if (networkUi == null) {
+                    networkUi = new NetworkUI();
+                    UIs.Add(networkUi);
 
-                Main.ChatBox.Add("Created new NUI");
-            }
+                    Main.ChatBox.Add("Created new NUI");
+                }
 
-            if (receivedGUIPacket == GUIPacket.Rectangle) {
-                networkUi.ID = id;
-                networkUi.Type = (byte)receivedGUIPacket;
-                networkUi.PlayerId = playerId;
-                networkUi.PosX = posX;
-                networkUi.PosY = posY;
-                networkUi.SizeX = sizeX;
-                networkUi.SizeY = sizeY;
-                networkUi.R = r;
-                networkUi.B = b;
-                networkUi.G = g;
-                networkUi.A = a;
-                networkUi.UIElement = new UIRectangle(new Point(networkUi.PosX, networkUi.PosY), new Size(networkUi.SizeX, networkUi.SizeY), Color.FromArgb(networkUi.A, networkUi.R, networkUi.G, networkUi.B));
+                if (receivedGUIPacket == GUIPacket.Rectangle) {
+                    networkUi.ID = id;
+                    networkUi.Type = (byte)receivedGUIPacket;
+                    networkUi.PlayerId = playerId;
+                    networkUi.PosX = posX;
+                    networkUi.PosY = posY;
+                    networkUi.SizeX = sizeX;
+                    networkUi.SizeY = sizeY;
+                    networkUi.R = r;
+                    networkUi.B = b;
+                    networkUi.G = g;
+                    networkUi.A = a;
+                    networkUi.UIElement = new UIRectangle(new Point(networkUi.PosX, networkUi.PosY), new Size(networkUi.SizeX, networkUi.SizeY), Color.FromArgb(networkUi.A, networkUi.R, networkUi.G, networkUi.B));
+                }
             }
+            // Remove GUI
+            else {
+                if(networkUi != null) {
+                    UIs.Remove(networkUi);
+                }
+                else {
+                    Main.ChatBox.Add("(internal) ERROR: NUI ID is NULL");
+                }
+            }      
         }
 
         private void ReadSetPlayerModelPacket(NetIncomingMessage netIncomingMessage) {

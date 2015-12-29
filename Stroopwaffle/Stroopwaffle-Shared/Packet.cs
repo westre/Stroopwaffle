@@ -41,6 +41,7 @@ namespace Stroopwaffle_Shared {
     }
 
     public enum GUIPacket {
-        Rectangle
+        Rectangle,
+        RemoveGUIElement
     }
 }

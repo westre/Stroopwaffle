@@ -3,6 +3,7 @@ using NLua;
 using Stroopwaffle_Shared;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,7 +21,6 @@ namespace Stroopwaffle_Server {
     class API {
         private Server Server { get; set; }
         public Lua Lua { get; set; }
-
         private List<ScriptTimer> ScriptTimers { get; set; }
 
         public enum Callback {
@@ -32,7 +32,10 @@ namespace Stroopwaffle_Server {
             OnPlayerInitialize,
             OnPlayerDied,
             OnPlayerRespawn,
-            OnOOS
+            OnOOS,
+            OnUpdate,
+            OnPlayerEnterVehicle,
+            OnPlayerExitVehicle
         }
 
         public API(Server server) {
@@ -58,6 +61,8 @@ namespace Stroopwaffle_Server {
                     }
                 }
             }
+
+            Fire(Callback.OnUpdate);
         }
 
         private void RegisterAllFunctions() {
@@ -67,10 +72,11 @@ namespace Stroopwaffle_Server {
             Lua.RegisterFunction("createVehicle", this, typeof(API).GetMethod("API_createVehicle"));
             Lua.RegisterFunction("destroyVehicle", this, typeof(API).GetMethod("API_destroyVehicle"));
 
-            Lua.RegisterFunction("getPosition", this, typeof(API).GetMethod("API_getPosition"));
-            Lua.RegisterFunction("getRotation", this, typeof(API).GetMethod("API_getRotation"));
-
             Lua.RegisterFunction("setPlayerPosition", this, typeof(API).GetMethod("API_setPlayerPosition"));
+            Lua.RegisterFunction("getPosition", this, typeof(API).GetMethod("API_getPosition"));
+
+            Lua.RegisterFunction("getRotation", this, typeof(API).GetMethod("API_getRotation"));
+         
             Lua.RegisterFunction("setPlayerVisible", this, typeof(API).GetMethod("API_setPlayerVisible"));
             Lua.RegisterFunction("freezePlayer", this, typeof(API).GetMethod("API_freezePlayer"));
             Lua.RegisterFunction("setPlayerHealth", this, typeof(API).GetMethod("API_setPlayerHealth"));
@@ -80,6 +86,8 @@ namespace Stroopwaffle_Server {
 
             Lua.RegisterFunction("setTimer", this, typeof(API).GetMethod("API_setTimer"));
             Lua.RegisterFunction("consolePrint", this, typeof(API).GetMethod("API_consolePrint"));
+
+            Lua.RegisterFunction("guiCreateRectangle", this, typeof(API).GetMethod("API_guiCreateRectangle"));
         }
 
         public void Fire(Callback callback, params object[] values) {
@@ -99,6 +107,41 @@ namespace Stroopwaffle_Server {
         }
 
         // All functions
+        public void API_guiCreateRectangle(int playerId, int posX, int posY, int sizeX, int sizeY, byte r, byte g, byte b, byte a) {
+            NetConnection netConnection = Server.Find(playerId);
+            //Server.SendGUICreateRectanglePacket(netConnection, playerId, new Point(posX, posY), new Size(sizeX, sizeY), Color.FromArgb(a, r, g, b));
+
+            NetworkUI networkUI = new NetworkUI();
+            networkUI.Type = (byte)GUIPacket.Rectangle;
+            networkUI.PlayerId = playerId;
+            networkUI.PosX = posX;
+            networkUI.PosY = posY;
+            networkUI.SizeX = sizeX;
+            networkUI.SizeY = sizeY;
+            networkUI.R = r;
+            networkUI.G = g;
+            networkUI.B = b;
+            networkUI.A = a;
+
+            Server.RegisterNetworkUI(networkUI);
+        }
+
+        public void API_createVehicle(int vehicleHash, int posX, int posY, int posZ, int rotX, int rotY, int rotZ) {
+            NetworkVehicle networkVehicle = new NetworkVehicle();
+            networkVehicle.Hash = vehicleHash;
+            networkVehicle.PosX = posX;
+            networkVehicle.PosY = posY;
+            networkVehicle.PosZ = posZ;
+            networkVehicle.RotX = rotX;
+            networkVehicle.RotY = rotY;
+            networkVehicle.RotZ = rotZ;
+            networkVehicle.RotW = 0;
+            networkVehicle.PrimaryColor = 0;
+            networkVehicle.SecondaryColor = 0;
+
+            Server.RegisterVehicle(networkVehicle);
+        }
+
         public void API_broadcastMessage(string message) {
             Server.Form.Output("API_DEBUG: " + message);
             Server.SendBroadcastMessagePacket(message);
@@ -128,22 +171,6 @@ namespace Stroopwaffle_Server {
             else {
                 Server.Form.Output("Error, API_broadcastPlayerMessage -> netConnection is null");
             }          
-        }
-
-        public void API_createVehicle(int vehicleHash, int posX, int posY, int posZ, int rotX, int rotY, int rotZ) {
-            NetworkVehicle networkVehicle = new NetworkVehicle();
-            networkVehicle.Hash = vehicleHash;
-            networkVehicle.PosX = posX;
-            networkVehicle.PosY = posY;
-            networkVehicle.PosZ = posZ;
-            networkVehicle.RotX = rotX;
-            networkVehicle.RotY = rotY;
-            networkVehicle.RotZ = rotZ;
-            networkVehicle.RotW = 0;
-            networkVehicle.PrimaryColor = 0;
-            networkVehicle.SecondaryColor = 0;
-
-            Server.RegisterVehicle(networkVehicle);
         }
 
         public void API_destroyVehicle(int vehicleId) {

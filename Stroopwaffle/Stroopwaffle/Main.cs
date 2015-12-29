@@ -27,13 +27,14 @@ using System.Collections.Generic;
 */
 
 public class Main : Script {
-
     public NetworkClient NetworkClient { get; set; }
     public Chatbox ChatBox { get; set; }
     public StatisticsUI StatisticsUI { get; set; }
 
     public static bool CloneSync { get; set; } = true;
     public static bool Interpolation { get; set; } = false;
+
+    private static DateTime RemoveEntitiesTime { get; set; }
 
     public Main() {
         NetworkClient = new NetworkClient(this);
@@ -50,11 +51,13 @@ public class Main : Script {
         }
         
         this.KeyUp += OnKeyUp;
-        this.KeyDown += OnKeyDown;  
+        this.KeyDown += OnKeyDown;
+
+        RemoveEntitiesTime = DateTime.Now.AddSeconds(10);
     }
 
     private void OnPlayerVehicleUpdate(object sender, EventArgs e) {
-        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
+        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.Players);
         foreach (NetworkPlayer networkPlayer in safePlayerList) {
             if (networkPlayer.CloneVehicle != null) {
                 DateTimeOffset playerDto = new DateTimeOffset(networkPlayer.VehicleLatestPositionTime);
@@ -76,7 +79,7 @@ public class Main : Script {
     }
 
     private void OnPlayerPedUpdate(object sender, EventArgs e) {
-        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
+        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.Players);
         foreach (NetworkPlayer networkPlayer in safePlayerList) {
             if(networkPlayer.NetVehicle == null) {
                 DateTimeOffset playerDto = new DateTimeOffset(networkPlayer.LatestPositionTime);
@@ -121,16 +124,23 @@ public class Main : Script {
         foreach(NetworkVehicle networkVehicle in safeVehicleList) {
             Point labelPosition = UI.WorldToScreen(networkVehicle.PhysicalVehicle.Position + new Vector3(0, 0, 0.5f));
 
-            UIElement text = new UIText("ID " + networkVehicle.ID + "\nPID: " + networkVehicle.PlayerID, labelPosition, 0.3f, Color.BlueViolet);
+            UIElement text = new UIText("ID " + networkVehicle.ID + "\nPID: " + networkVehicle.PlayerID + "\nHP: " + networkVehicle.PhysicalVehicle.Health, labelPosition, 0.3f, Color.BlueViolet);
             text.Draw();
         }
 
-        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.ServerPlayers);
+        List<NetworkPlayer> safePlayerList = new List<NetworkPlayer>(NetworkClient.Players);
         foreach (NetworkPlayer networkPlayer in safePlayerList) {
             Point labelPosition = UI.WorldToScreen(networkPlayer.Position + new Vector3(0, 0, 2.5f));
 
             UIElement text = new UIText("ID " + networkPlayer.PlayerID + "\n" + networkPlayer.Health + "/" + networkPlayer.MaxHealth + " (" + networkPlayer.Armor + ")", labelPosition, 0.3f, Color.Green);
             text.Draw();
+        }
+
+        List<NetworkUI> safeUIsList = new List<NetworkUI>(NetworkClient.UIs);
+        foreach (NetworkUI networkUI in safeUIsList) {
+            if((GUIPacket)networkUI.Type == GUIPacket.Rectangle) {
+                networkUI.UIElement.Draw();
+            }
         }
 
         // GUI
@@ -152,8 +162,48 @@ public class Main : Script {
         Function.Call(Hash.SET_GARBAGE_TRUCKS, 0);
         Function.Call(Hash.SET_RANDOM_BOATS, 0);
         Function.Call(Hash.SET_RANDOM_TRAINS, 0);
-
         Function.Call(Hash.SET_GAME_PAUSED, false); // lel?
+
+        if(!CloneSync) {
+            if (DateTime.Now > RemoveEntitiesTime) {
+                foreach (Vehicle vehicle in World.GetNearbyVehicles(Game.Player.Character, 512f)) {
+                    bool isNetworkVehicle = false;
+                    foreach (NetworkVehicle networkVehicle in NetworkClient.Vehicles) {
+                        if (vehicle.IsInRangeOf(networkVehicle.PhysicalVehicle.Position, 3f)) {
+                            isNetworkVehicle = true;
+                            break;
+                        }
+                    }
+
+                    if (isNetworkVehicle) {
+                        continue;
+                    }
+                    else {
+                        vehicle.Delete();
+                    }
+                }
+
+                foreach (Ped ped in World.GetNearbyPeds(Game.Player.Character, 512f)) {
+                    bool isNetworkPed = false;
+                    foreach (NetworkPlayer networkPlayer in NetworkClient.Players) {
+                        if (ped.IsInRangeOf(networkPlayer.Ped.Position, 3f)) {
+                            isNetworkPed = true;
+                            break;
+                        }
+                    }
+
+                    if (isNetworkPed) {
+                        continue;
+                    }
+                    else {
+                        ped.Delete();
+                    }
+                }
+
+                RemoveEntitiesTime = DateTime.Now;
+                RemoveEntitiesTime = RemoveEntitiesTime.AddSeconds(5);
+            }
+        }
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e) {
@@ -190,6 +240,14 @@ public class Main : Script {
                 NetworkClient.Disconnect();
                 ChatBox.Add("Disconnected from server.");
             }
+        }
+
+        // Enter vehicle as passenger
+        if(e.KeyCode == Keys.G) {
+            Vehicle vehicle = World.GetClosestVehicle(Game.Player.Character.Position, 5f);
+            if(vehicle != null) {
+                Game.Player.Character.Task.EnterVehicle(vehicle, VehicleSeat.Passenger);
+            } 
         }
     }
 

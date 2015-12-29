@@ -23,6 +23,7 @@ namespace Stroopwaffle_Shared {
 
         // Clientside only
         public Vehicle PhysicalVehicle { get; set; }
+        public int Seat { get; set; }
 
         public static NetworkVehicle Exists(List<NetworkVehicle> vehicles, int id) {
             foreach(NetworkVehicle vehicle in vehicles) {

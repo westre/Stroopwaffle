@@ -16,7 +16,11 @@ namespace Stroopwaffle {
     public class NetworkClient {
         private Main Main { get; set; }
         public NetClient NetClient { get; set; }
-        public List<NetworkPlayer> ServerPlayers { get; set; }
+
+        public List<NetworkPlayer> Players { get; set; }
+        public List<NetworkVehicle> Vehicles { get; set; }
+        public List<NetworkUI> UIs { get; set; }
+
         public bool SafeForNet { get; set; }
 
         private int Switch { get; set; }
@@ -24,8 +28,6 @@ namespace Stroopwaffle {
         private bool BlockAimAtTask { get; set; }
 
         public int WorldRelationship { get; set; }
-
-        public List<NetworkVehicle> Vehicles { get; set; }
 
         public OOSDetector OOSDetector { get; set; }
 
@@ -35,8 +37,10 @@ namespace Stroopwaffle {
             NetPeerConfiguration config = new NetPeerConfiguration("wh");
             config.AutoFlushSendQueue = false;
 
-            ServerPlayers = new List<NetworkPlayer>();
+            Players = new List<NetworkPlayer>();
             Vehicles = new List<NetworkVehicle>();
+            UIs = new List<NetworkUI>();
+
             OOSDetector = new OOSDetector(this);
 
             NetClient = new NetClient(config);
@@ -44,8 +48,9 @@ namespace Stroopwaffle {
         }
 
         public NetConnection Connect(string ip) {
-            ServerPlayers.Clear();
+            Players.Clear();
             Vehicles.Clear();
+            UIs.Clear();
 
             NetOutgoingMessage hail = NetClient.CreateMessage("This is the hail message");
             return NetClient.Connect(ip, 80, hail);
@@ -133,6 +138,7 @@ namespace Stroopwaffle {
             outgoingMessage.Write((int)vehicle.PrimaryColor);
             outgoingMessage.Write((int)vehicle.SecondaryColor);
             outgoingMessage.Write(vehicle.Speed);
+            outgoingMessage.Write(Utility.GetPedSeat(Game.Player.Character));
             NetClient.SendMessage(outgoingMessage, NetDeliveryMethod.Unreliable);
         }
 
@@ -283,14 +289,14 @@ namespace Stroopwaffle {
             int playerId = netIncomingMessage.ReadInt32();
 
             // ConcurrentModificationException failsafe
-            List<NetworkPlayer> safeServerPlayers = new List<NetworkPlayer>(ServerPlayers);
+            List<NetworkPlayer> safeServerPlayers = new List<NetworkPlayer>(Players);
 
             foreach (NetworkPlayer netPlayer in safeServerPlayers) {
                 if (netPlayer.PlayerID == playerId) {
                     netPlayer.Ped.CurrentBlip.Remove();
                     netPlayer.Ped.Delete();
 
-                    ServerPlayers.Remove(netPlayer);
+                    Players.Remove(netPlayer);
                     Main.ChatBox.Add("(internal) Removed PlayerID: " + playerId);
                 }
             }
@@ -303,7 +309,7 @@ namespace Stroopwaffle {
             if (!Main.CloneSync && GetLocalPlayer().PlayerID == playerId) return;
 
             NetworkPlayer networkPlayer = null;
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId)
                     networkPlayer = serverNetworkPlayer;
             }
@@ -314,7 +320,13 @@ namespace Stroopwaffle {
                 NetworkVehicle sourceVehicle = NetworkVehicle.Exists(Vehicles, networkPlayer.NetVehicle.ID);
                 sourceVehicle.PlayerID = -1;
 
-                networkPlayer.Ped.Task.WarpOutOfVehicle(networkPlayer.NetVehicle.PhysicalVehicle);
+                if(!Main.CloneSync) {
+                    networkPlayer.Ped.Task.WarpOutOfVehicle(networkPlayer.NetVehicle.PhysicalVehicle);
+                }
+                else {
+                    networkPlayer.Ped.Task.WarpOutOfVehicle(networkPlayer.CloneVehicle.PhysicalVehicle);
+                }
+                
                 networkPlayer.NetVehicle = null;
             }
         }
@@ -325,7 +337,7 @@ namespace Stroopwaffle {
             float posY = netIncomingMessage.ReadFloat();
             float posZ = netIncomingMessage.ReadFloat();
 
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId) {
                     serverNetworkPlayer.Position = new Vector3(posX, posY, posZ);
 
@@ -384,7 +396,7 @@ namespace Stroopwaffle {
 
             // Check to see if this player is already in our list
             NetworkPlayer networkPlayer = null;
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId)
                     networkPlayer = serverNetworkPlayer;
             }
@@ -419,6 +431,7 @@ namespace Stroopwaffle {
 
             // We have a new model!
             if (networkPlayer.Model != modelHash) {
+                networkPlayer.Model = modelHash;
                 SetPlayerPed(networkPlayer, modelHash);
             }
 
@@ -444,8 +457,9 @@ namespace Stroopwaffle {
             // Update the player if he's not in a vehicle
             if (networkPlayer.NetVehicle == null) {
                 if (networkPlayer.Shooting == 1) {
-                    //Function.Call(Hash.SHOOT_SINGLE_BULLET_BETWEEN_COORDS, networkPlayer.Ped.Position.X, networkPlayer.Ped.Position.Y, networkPlayer.Ped.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 50, true, 0x1B06D571, networkPlayer.Ped, true, false, 100);
-
+                    Function.Call(Hash.SHOOT_SINGLE_BULLET_BETWEEN_COORDS, networkPlayer.Ped.Position.X, networkPlayer.Ped.Position.Y, networkPlayer.Ped.Position.Z, networkPlayer.AimPosition.X, networkPlayer.AimPosition.Y, networkPlayer.AimPosition.Z, 10, true, networkPlayer.CurrentWeapon, networkPlayer.Ped, true, false, 100);
+                    //World.ShootBullet(networkPlayer.Position, networkPlayer.AimPosition, networkPlayer.Ped, networkPlayer.CurrentWeapon, 10);
+                    
                     networkPlayer.Ped.ShootRate = 100000;
                     networkPlayer.Ped.Task.ShootAt(networkPlayer.AimPosition, 355);
 
@@ -533,11 +547,12 @@ namespace Stroopwaffle {
             int primaryColor = netIncomingMessage.ReadInt32();
             int secondaryColor = netIncomingMessage.ReadInt32();
             float speed = netIncomingMessage.ReadFloat();
+            int seat = netIncomingMessage.ReadInt32();
 
             NetworkVehicle networkVehicle = NetworkVehicle.Exists(Vehicles, id);
 
             // Clone debug sync
-            NetworkPlayer networkPlayer = NetworkPlayer.Get(ServerPlayers, playerId);
+            NetworkPlayer networkPlayer = NetworkPlayer.Get(Players, playerId);
             if(networkPlayer != null && Main.CloneSync) {
                 if(networkPlayer.CloneVehicle == null) {
                     networkPlayer.CloneVehicle = new NetworkVehicle();
@@ -568,7 +583,7 @@ namespace Stroopwaffle {
                 if (!Main.Interpolation) {
                     networkPlayer.CloneVehicle.PhysicalVehicle.Position = new Vector3(posX, posY, posZ) + new Vector3(5, 0, 0);
                     networkPlayer.CloneVehicle.PhysicalVehicle.Quaternion = new Quaternion(rotX, rotY, rotZ, rotW);
-                } 
+                }
             }
 
             // It exists in our list
@@ -585,6 +600,7 @@ namespace Stroopwaffle {
 
                 // Testing ;)
                 networkVehicle.PhysicalVehicle.CanBeVisiblyDamaged = false;
+                networkVehicle.PhysicalVehicle.IsInvincible = true;
                 networkVehicle.PhysicalVehicle.EngineRunning = true;
                 networkVehicle.PhysicalVehicle.PrimaryColor = (VehicleColor)primaryColor;
                 networkVehicle.PhysicalVehicle.SecondaryColor = (VehicleColor)secondaryColor;
@@ -595,9 +611,15 @@ namespace Stroopwaffle {
 
             // -1 to playerId, or other playerId means someone entered the vehicle!
             if (networkVehicle.PlayerID != playerId) {
-                NetworkPlayer driver = NetworkPlayer.Get(ServerPlayers, playerId);
+                NetworkPlayer driver = NetworkPlayer.Get(Players, playerId);
                 if (driver != null) {
-                    driver.Ped?.Task.WarpIntoVehicle(networkVehicle.PhysicalVehicle, VehicleSeat.Any); // If we don't have a ped, i.e. localplayer
+                    if(!Main.CloneSync) {
+                        driver.Ped?.Task.WarpIntoVehicle(networkVehicle.PhysicalVehicle, (VehicleSeat)seat); // If we don't have a ped, i.e. localplayer
+                    }
+                    else {
+                        driver.Ped.Task.WarpIntoVehicle(driver.CloneVehicle.PhysicalVehicle, (VehicleSeat)seat);
+                    }   
+                              
                     driver.NetVehicle = networkVehicle;
                     Main.ChatBox.Add("(internal) Set driver ped in vehicle: " + networkVehicle.PhysicalVehicle.Model.ToString());
                 }
@@ -690,8 +712,55 @@ namespace Stroopwaffle {
                     else if (receivedPacket == PacketType.SetPlayerModel) {
                         ReadSetPlayerModelPacket(netIncomingMessage);
                     }
+                    else if (receivedPacket == PacketType.GUIPacket) {
+                        ReadGUIPacket(netIncomingMessage);
+                    }
                 }
                 NetClient.Recycle(netIncomingMessage);
+            }
+        }
+
+        private void ReadGUIPacket(NetIncomingMessage netIncomingMessage) {
+            GUIPacket receivedGUIPacket = (GUIPacket)netIncomingMessage.ReadByte();
+            int id = netIncomingMessage.ReadInt32();
+            int playerId = netIncomingMessage.ReadInt32();
+            int posX = netIncomingMessage.ReadInt32();
+            int posY = netIncomingMessage.ReadInt32();
+            int sizeX = netIncomingMessage.ReadInt32();
+            int sizeY = netIncomingMessage.ReadInt32();
+            byte r = netIncomingMessage.ReadByte();
+            byte g = netIncomingMessage.ReadByte();
+            byte b = netIncomingMessage.ReadByte();
+            byte a = netIncomingMessage.ReadByte();
+
+            // Check to see if this UI is already in our list
+            NetworkUI networkUi = null;
+            foreach (NetworkUI ui in UIs) {
+                if (ui.ID == id)
+                    networkUi = ui;
+            }
+
+            // It doesn't exist, so create one!
+            if(networkUi == null) {
+                networkUi = new NetworkUI();
+                UIs.Add(networkUi);
+
+                Main.ChatBox.Add("Created new NUI");
+            }
+
+            if (receivedGUIPacket == GUIPacket.Rectangle) {
+                networkUi.ID = id;
+                networkUi.Type = (byte)receivedGUIPacket;
+                networkUi.PlayerId = playerId;
+                networkUi.PosX = posX;
+                networkUi.PosY = posY;
+                networkUi.SizeX = sizeX;
+                networkUi.SizeY = sizeY;
+                networkUi.R = r;
+                networkUi.B = b;
+                networkUi.G = g;
+                networkUi.A = a;
+                networkUi.UIElement = new UIRectangle(new Point(networkUi.PosX, networkUi.PosY), new Size(networkUi.SizeX, networkUi.SizeY), Color.FromArgb(networkUi.A, networkUi.R, networkUi.G, networkUi.B));
             }
         }
 
@@ -699,7 +768,7 @@ namespace Stroopwaffle {
             int playerId = netIncomingMessage.ReadInt32();
             uint modelId = (uint)netIncomingMessage.ReadInt32();
 
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId) {
                     serverNetworkPlayer.Model = modelId;
 
@@ -736,7 +805,7 @@ namespace Stroopwaffle {
             int playerId = netIncomingMessage.ReadInt32();
             int weaponId = netIncomingMessage.ReadInt32();
 
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId) {
                     serverNetworkPlayer.Weapons.Add(weaponId);
 
@@ -757,7 +826,7 @@ namespace Stroopwaffle {
         private void ReadNewPedPacket(NetIncomingMessage netIncomingMessage) {
             int playerId = netIncomingMessage.ReadInt32();
 
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId) {
 
                     // We don't want to do ped things on our own player, because we don't have our own physical ped
@@ -773,7 +842,7 @@ namespace Stroopwaffle {
             int playerId = netIncomingMessage.ReadInt32();
             int armor = netIncomingMessage.ReadInt32();
 
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId) {
                     serverNetworkPlayer.Armor = armor;
 
@@ -788,7 +857,7 @@ namespace Stroopwaffle {
             int playerId = netIncomingMessage.ReadInt32();
             int health = netIncomingMessage.ReadInt32();
 
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if (serverNetworkPlayer.PlayerID == playerId) {
                     serverNetworkPlayer.Health = health;
 
@@ -810,7 +879,7 @@ namespace Stroopwaffle {
         }
 
         public void Disconnect() {
-            foreach (NetworkPlayer serverNetworkPlayer in ServerPlayers) {
+            foreach (NetworkPlayer serverNetworkPlayer in Players) {
                 if(serverNetworkPlayer.Ped != null) {
                     serverNetworkPlayer.Ped.CurrentBlip.Remove();
                     serverNetworkPlayer.Ped.Delete();
@@ -820,8 +889,8 @@ namespace Stroopwaffle {
         }
 
         public NetworkPlayer GetLocalPlayer() {
-            if(ServerPlayers != null) {
-                foreach (NetworkPlayer networkPlayer in ServerPlayers) {
+            if(Players != null) {
+                foreach (NetworkPlayer networkPlayer in Players) {
                     if (networkPlayer.LocalPlayer)
                         return networkPlayer;
                 }
@@ -844,7 +913,7 @@ namespace Stroopwaffle {
                 networkPlayer.CreatePed(networkPlayer.Position, (uint)PedHash.Brad, WorldRelationship);
             }
                   
-            ServerPlayers.Add(networkPlayer);
+            Players.Add(networkPlayer);
 
             Main.ChatBox.Add("(internal) Added PlayerID " + networkPlayer.PlayerID + " to the ServerPlayers list");
 

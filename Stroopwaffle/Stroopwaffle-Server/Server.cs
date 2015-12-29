@@ -7,6 +7,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using System.Drawing;
 
 namespace Stroopwaffle_Server {
     public class Server : NetServer {
@@ -14,9 +15,11 @@ namespace Stroopwaffle_Server {
 
         public List<NetworkPlayer> Players { get; set; }
         public List<NetworkVehicle> Vehicles { get; set; }
+        public List<NetworkUI> UIs { get; set; }
 
         private bool[] PlayerIDs { get; set; }
         private bool[] VehicleIDs { get; set; }
+        private bool[] UIIDs { get; set; }
 
         private API API { get; set; }
         private OOSListener OOSListener { get; set; }
@@ -82,6 +85,10 @@ namespace Stroopwaffle_Server {
             Vehicles = new List<NetworkVehicle>();
             // Allocate 100 potential vehicle ids
             VehicleIDs = new bool[100];
+            // Allocate 255 potential networkui ids
+            UIIDs = new bool[255];
+            // Create list
+            UIs = new List<NetworkUI>();
 
             // Load configuration file
             try {
@@ -124,7 +131,6 @@ namespace Stroopwaffle_Server {
                 API.Fire(API.Callback.OnScriptExit);
             }
         }
-
         private void Tick(object sender, EventArgs e) {
             SendUpdate();
             API.Tick();
@@ -349,6 +355,8 @@ namespace Stroopwaffle_Server {
                                         NetworkVehicle sourceVehicle = NetworkVehicle.Exists(Vehicles, networkPlayer.NetVehicle.ID);
                                         sourceVehicle.PlayerID = -1;
 
+                                        API.Fire(API.Callback.OnPlayerExitVehicle, playerId, sourceVehicle.ID);
+
                                         SendNoVehiclePacket(networkPlayer);
                                         networkPlayer.NetVehicle = null;
                                     }
@@ -386,9 +394,15 @@ namespace Stroopwaffle_Server {
                                     int primaryColor = netIncomingMessage.ReadInt32();
                                     int secondaryColor = netIncomingMessage.ReadInt32();
                                     float speed = netIncomingMessage.ReadFloat();
+                                    int seat = netIncomingMessage.ReadInt32();
 
                                     NetworkVehicle networkVehicle = NetworkVehicle.Exists(Vehicles, vehicleId);
                                     if(networkVehicle != null) {
+                                        // Someone just entered this vehicle
+                                        if (networkVehicle.PlayerID == -1 && playerId >= 0) {
+                                            API.Fire(API.Callback.OnPlayerEnterVehicle, playerId, vehicleId);
+                                        }
+
                                         networkVehicle.PlayerID = playerId;
                                         networkVehicle.PosX = posX;
                                         networkVehicle.PosY = posY;
@@ -397,6 +411,10 @@ namespace Stroopwaffle_Server {
                                         networkVehicle.RotX = rotX;
                                         networkVehicle.RotY = rotY;
                                         networkVehicle.RotZ = rotZ;
+                                        networkVehicle.PrimaryColor = primaryColor;
+                                        networkVehicle.SecondaryColor = secondaryColor;
+                                        networkVehicle.Speed = speed;
+                                        networkVehicle.Seat = seat;
 
                                         networkPlayer.NetVehicle = networkVehicle;
                                         //Form.Output("Updated vehicleId: " + vehicleId + ", posX: " + posX);
@@ -434,6 +452,22 @@ namespace Stroopwaffle_Server {
                 Thread.Sleep(1);
             }
         }
+
+        /*public void SendGUICreateRectanglePacket(NetConnection netConnection, int playerId, Point point, Size size, Color color) {
+            NetOutgoingMessage outgoingMessage = CreateMessage();
+            outgoingMessage.Write((byte)PacketType.GUIPacket);
+            outgoingMessage.Write((byte)GUIPacket.CreateRectangle);
+            outgoingMessage.Write(playerId);
+            outgoingMessage.Write(point.X);
+            outgoingMessage.Write(point.Y);
+            outgoingMessage.Write(size.Width);
+            outgoingMessage.Write(size.Height);
+            outgoingMessage.Write(color.R);
+            outgoingMessage.Write(color.G);
+            outgoingMessage.Write(color.B);
+            outgoingMessage.Write(color.A);
+            SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.ReliableOrdered);
+        }*/
 
         public void SendSetPlayerModelPacket(int playerId, uint model) {
             if (GetAllConnections().Count == 0) return;
@@ -602,8 +636,32 @@ namespace Stroopwaffle_Server {
                     outgoingMessage.Write(networkVehicle.PrimaryColor);
                     outgoingMessage.Write(networkVehicle.SecondaryColor);
                     outgoingMessage.Write(networkVehicle.Speed);
+                    outgoingMessage.Write(networkVehicle.Seat);
                     SendMessage(outgoingMessage, GetAllConnections(), NetDeliveryMethod.Unreliable, 0);
-                }   
+                }
+
+                #warning Change this from BitStream to RPC
+                List<NetworkUI> safeNetworkUIList = new List<NetworkUI>(UIs);
+                foreach (NetworkUI networkUI in safeNetworkUIList) {
+                    NetConnection netConnection = Find(networkUI.PlayerId); // Some optimization, only send it to the player
+
+                    NetOutgoingMessage outgoingMessage = CreateMessage();
+                    outgoingMessage = CreateMessage();
+                    outgoingMessage.Write((byte)PacketType.GUIPacket);
+                    outgoingMessage.Write((byte)networkUI.Type);
+                    outgoingMessage.Write(networkUI.ID);
+                    outgoingMessage.Write(networkUI.PlayerId);
+                    outgoingMessage.Write(networkUI.PosX);
+                    outgoingMessage.Write(networkUI.PosY);
+                    outgoingMessage.Write(networkUI.SizeX);
+                    outgoingMessage.Write(networkUI.SizeY);
+                    outgoingMessage.Write(networkUI.R);
+                    outgoingMessage.Write(networkUI.G);
+                    outgoingMessage.Write(networkUI.B);
+                    outgoingMessage.Write(networkUI.A);
+
+                    SendMessage(outgoingMessage, netConnection, NetDeliveryMethod.Unreliable, 0);
+                }
             }            
         }
 
@@ -655,6 +713,16 @@ namespace Stroopwaffle_Server {
             return -1;
         }
 
+        private int FindAvailableNetworkUIID() {
+            for (int index = 0; index < UIIDs.Length; index++) {
+                if (!UIIDs[index]) {
+                    UIIDs[index] = true;
+                    return index;
+                }
+            }
+            return -1;
+        }
+
         public void RegisterVehicle(NetworkVehicle networkVehicle) {
             int vehicleId = FindAvailableVehicleID();
 
@@ -663,6 +731,15 @@ namespace Stroopwaffle_Server {
             Form.Output("Allocated vehicle id: " + vehicleId);
 
             Vehicles.Add(networkVehicle);
+        }
+
+        public void RegisterNetworkUI(NetworkUI networkUI) {
+            int networkUIId = FindAvailableNetworkUIID();
+
+            networkUI.ID = networkUIId;
+            Form.Output("Allocated ui id: " + networkUIId);
+
+            UIs.Add(networkUI);
         }
     }
 }

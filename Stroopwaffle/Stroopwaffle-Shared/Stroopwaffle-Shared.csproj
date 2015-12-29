@@ -39,6 +39,7 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="NetworkUI.cs" />
     <Compile Include="NetworkVehicle.cs" />
     <Compile Include="Packet.cs" />
   </ItemGroup>

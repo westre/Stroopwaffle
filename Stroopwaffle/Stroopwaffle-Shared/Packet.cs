@@ -30,12 +30,17 @@ namespace Stroopwaffle_Shared {
         NewPed,
         GivePlayerWeapon,
         OOSPacket,
-        SetPlayerModel
+        SetPlayerModel,
+        GUIPacket
     }
 
     public enum OOSPacket {
         InvalidVehicle,
         InvalidWeapon,
         InvalidModel
+    }
+
+    public enum GUIPacket {
+        Rectangle
     }
 }

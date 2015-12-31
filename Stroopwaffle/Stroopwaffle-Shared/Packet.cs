@@ -44,4 +44,10 @@ namespace Stroopwaffle_Shared {
         Rectangle,
         RemoveGUIElement
     }
+
+    public enum MasterServerMessageType {
+        RegisterHost,
+        RequestHostList,
+        RequestIntroduction,
+    }
 }

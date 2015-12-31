@@ -4,11 +4,11 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{28EF2B34-F523-4B8D-9969-1892212C467E}</ProjectGuid>
-    <OutputType>Library</OutputType>
+    <ProjectGuid>{1333D768-AE8F-47B9-A71E-D305214F3A05}</ProjectGuid>
+    <OutputType>Exe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Stroopwaffle_Shared</RootNamespace>
-    <AssemblyName>Stroopwaffle-Shared</AssemblyName>
+    <RootNamespace>Stroopwaffle_MasterServer</RootNamespace>
+    <AssemblyName>Stroopwaffle-MasterServer</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -32,28 +32,34 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <PropertyGroup>
-    <StartupObject />
-  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Lidgren.Network">
+      <HintPath>..\..\Lidgren.Network.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ServerData.cs" />
+  </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="NetworkUI.cs" />
-    <Compile Include="NetworkVehicle.cs" />
-    <Compile Include="Packet.cs" />
-    <Compile Include="SharedConfiguration.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="ScriptHookVDotNet">
-      <HintPath>..\..\ScriptHookVDotNet.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
+    <ProjectReference Include="..\Stroopwaffle-Shared\Stroopwaffle-Shared.csproj">
+      <Project>{28ef2b34-f523-4b8d-9969-1892212c467e}</Project>
+      <Name>Stroopwaffle-Shared</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <PropertyGroup>
-    <PostBuildEvent>COPY "$(TargetDir)$(TargetFileName)" "D:\Steam\steamapps\common\Grand Theft Auto V\scripts"</PostBuildEvent>
-  </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

@@ -16,6 +16,7 @@
             <Button x:Name="button1" Content="Change&#xD;&#xA;playername" HorizontalAlignment="Left" Margin="10,10,0,0" VerticalAlignment="Top" Width="110" Height="50" Grid.Column="1"/>
             <Button x:Name="button2" Content="Set game path" Grid.Column="1" HorizontalAlignment="Left" Margin="10,70,0,0" VerticalAlignment="Top" Width="110" Height="51"/>
             <Button x:Name="btnTest" Content="TestButton" HorizontalAlignment="Left" Margin="331,36,0,0" VerticalAlignment="Top" Width="75" Click="TestButtonClick"/>
+            <Button x:Name="btnRefresh" Content="Refresh" HorizontalAlignment="Left" Margin="356,81,0,0" VerticalAlignment="Top" Width="75" Click="RefreshServerList"/>
         </Grid>
         <Grid Margin="0,131,0,0">
             <ScrollViewer>

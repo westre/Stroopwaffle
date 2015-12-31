@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using System.Drawing;
+using System.Net;
 
 namespace Stroopwaffle_Server {
     public class Server : NetServer {
@@ -23,6 +24,8 @@ namespace Stroopwaffle_Server {
 
         private API API { get; set; }
         private OOSListener OOSListener { get; set; }
+
+        private float MasterServerLastRegistered { get; set; } = -60.0f;
 
         public struct ConfigurationData {
             public string ServerName;
@@ -138,6 +141,28 @@ namespace Stroopwaffle_Server {
 
         public void Application_Idle(object sender, EventArgs e) {
             while (NativeMethods.AppStillIdle) {
+                // (re-)register periodically with master server
+                if (NetTime.Now > MasterServerLastRegistered + 60) {
+                    // register with master server
+                    NetOutgoingMessage regMsg = CreateMessage();
+                    regMsg.Write((byte)MasterServerMessageType.RegisterHost);
+
+                    IPAddress mask;
+                    IPAddress adr = NetUtility.GetMyAddress(out mask);
+
+                    regMsg.Write(UniqueIdentifier);
+                    regMsg.Write(new IPEndPoint(adr, ConfigData.Port));
+
+                    regMsg.Write(ConfigData.ServerName);
+                    regMsg.Write(ConfigData.Script);
+                    regMsg.Write(Players.Count);
+                    regMsg.Write(ConfigData.MaxPlayers);
+
+                    Form.Output("Sending registration to master server");
+                    SendUnconnectedMessage(regMsg, SharedConfiguration.MasterServerEndPoint);
+                    MasterServerLastRegistered = (float)NetTime.Now;
+                }
+
                 NetIncomingMessage netIncomingMessage;
                 while ((netIncomingMessage = ReadMessage()) != null) {
                     switch (netIncomingMessage.MessageType) {

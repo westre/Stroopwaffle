@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace Stroopwaffle_DummyClient.Properties {
+namespace Stroopwaffle_Launcher.Properties {
 
 
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
